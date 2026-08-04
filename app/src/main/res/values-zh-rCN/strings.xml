@@ -1,0 +1,78 @@
+<resources>
+    <string name="app_name">茶话</string>
+    <string name="notification_channel_name">消息服务</string>
+    <string name="notification_channel_desc">后台接收新消息时显示通知</string>
+
+    <string name="splash_tagline">茶话</string>
+
+    <string name="auth_welcome">欢迎使用茶话</string>
+    <string name="auth_subtitle">请输入你的 key 登录</string>
+    <string name="auth_server_label">服务器地址</string>
+    <string name="server_url_hint">默认 https://chahui.app/_api</string>
+    <string name="auth_key_label">Key (JWT 或 UID)</string>
+    <string name="auth_key_hint">支持粘贴 JWT；开发模式下也可直接输入用户 UID</string>
+    <string name="auth_login">登录</string>
+    <string name="auth_error_key_blank">请输入 key</string>
+    <string name="auth_error_invalid">认证失败：key 无效，或服务器不允许该认证方式</string>
+    <string name="auth_error_failed">登录失败：%1$s</string>
+    <string name="auth_error_network">网络错误</string>
+
+    <string name="tab_chats">聊天</string>
+    <string name="tab_settings">设置</string>
+    <string name="refresh">刷新</string>
+    <string name="tab_group">群聊</string>
+    <string name="tab_threads">话题</string>
+    <string name="empty_chats">暂无群聊</string>
+    <string name="empty_threads">暂无话题</string>
+    <string name="thread_reply_count">%1$d 条回复</string>
+    <string name="retry">重试</string>
+
+    <string name="settings_not_logged_in">未登录</string>
+    <string name="settings_uid">UID: %1$d</string>
+    <string name="settings_server_section">服务器</string>
+    <string name="settings_server_label">API 服务器地址</string>
+    <string name="settings_save">保存并重连</string>
+    <string name="settings_saved">已保存，实时连接已重建</string>
+    <string name="settings_save_failed">保存失败：%1$s</string>
+    <string name="settings_about">关于</string>
+    <string name="settings_version">Chahua Android v%1$s</string>
+    <string name="settings_logout">退出登录</string>
+
+    <string name="chat_thread_subtitle">话题 · %1$d 条回复</string>
+    <string name="chat_status_online">实时</string>
+    <string name="chat_status_connecting">连接中</string>
+    <string name="chat_status_offline">离线</string>
+    <string name="chat_input_placeholder">输入消息…</string>
+    <string name="chat_send_image">发送图片</string>
+    <string name="chat_send">发送</string>
+    <string name="chat_back">返回</string>
+    <string name="chat_cancel_reply">取消回复</string>
+    <string name="chat_reply_preview">回复 %1$s：%2$s</string>
+    <string name="chat_reply_to">回复</string>
+    <string name="chat_reply_message">消息</string>
+    <string name="chat_play">播放</string>
+    <string name="chat_react">表情</string>
+    <string name="chat_copy">复制</string>
+    <string name="chat_delete">删除</string>
+    <string name="chat_sending">发送中…</string>
+    <string name="chat_empty">还没有消息，说点什么吧</string>
+    <string name="chat_select_from_list">请从左侧选择聊天</string>
+    <string name="chat_image">[图片]</string>
+    <string name="chat_video">[视频]</string>
+    <string name="chat_audio">[语音]</string>
+    <string name="chat_file">[文件]</string>
+    <string name="chat_sticker">[贴纸]</string>
+    <string name="chat_message">[消息]</string>
+    <string name="chat_send_failed">发送失败：%1$s</string>
+    <string name="chat_action_failed">操作失败：%1$s</string>
+    <string name="chat_delete_failed">删除失败：%1$s</string>
+    <string name="chat_image_too_large">图片超过 20MB，无法发送</string>
+    <string name="chat_read_image_failed">无法读取所选图片</string>
+
+    <string name="media_title">媒体</string>
+    <string name="common_avatar_desc">头像</string>
+    <string name="time_format_date">M月d日 HH:mm</string>
+
+    <string name="service_running">消息服务运行中</string>
+    <string name="service_message_format">%1$s: %2$s</string>
+</resources>

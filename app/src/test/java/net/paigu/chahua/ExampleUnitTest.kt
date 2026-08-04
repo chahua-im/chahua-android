@@ -1,4 +1,4 @@
-package com.paigu.helloworld_chahua
+package net.paigu.chahua
 
 import org.junit.Test
 

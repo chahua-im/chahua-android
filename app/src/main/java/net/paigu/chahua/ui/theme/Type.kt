@@ -1,4 +1,4 @@
-package com.paigu.helloworld_chahua.ui.theme
+package net.paigu.chahua.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
