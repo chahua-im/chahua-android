@@ -98,10 +98,11 @@ class ChatStore {
             chats.map { chat ->
                 if (chat.id == msg.chatId) {
                     val isMine = msg.sender.uid == currentUid()
+                    val isThreadReply = !msg.replyRootId.isNullOrBlank()
                     chat.copy(
                         lastMessage = if (msg.isDeleted) chat.lastMessage else msg.toPreview(),
                         lastMessageAt = msg.createdAt ?: chat.lastMessageAt,
-                        unreadCount = if (isMine) chat.unreadCount else chat.unreadCount + 1,
+                        unreadCount = if (isMine || isThreadReply) chat.unreadCount else chat.unreadCount + 1,
                     )
                 } else chat
             }

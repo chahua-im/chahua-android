@@ -2,6 +2,10 @@
     <string name="app_name">茶话</string>
     <string name="notification_channel_name">消息服务</string>
     <string name="notification_channel_desc">后台接收新消息时显示通知</string>
+    <string name="notification_channel_chats_name">群聊消息</string>
+    <string name="notification_channel_chats_desc">收到新的群聊消息时通知</string>
+    <string name="notification_channel_threads_name">话题消息</string>
+    <string name="notification_channel_threads_desc">收到新的话题回复时通知</string>
 
     <string name="splash_tagline">茶话</string>
 
@@ -72,7 +76,8 @@
     <string name="media_title">媒体</string>
     <string name="common_avatar_desc">头像</string>
     <string name="time_format_date">M月d日 HH:mm</string>
+    <string name="message_sender_format">%1$s：%2$s</string>
+    <string name="message_sender_unknown">用户</string>
 
     <string name="service_running">消息服务运行中</string>
-    <string name="service_message_format">%1$s: %2$s</string>
 </resources>

@@ -1,7 +1,12 @@
 <resources>
     <string name="app_name">Chahua</string>
+    <string name="x_app_version" translatable="false">Android-1.0.0</string>
     <string name="notification_channel_name">Messaging Service</string>
     <string name="notification_channel_desc">Shows notifications for new messages in background</string>
+    <string name="notification_channel_chats_name">Group chats</string>
+    <string name="notification_channel_chats_desc">Notifications for new group chat messages</string>
+    <string name="notification_channel_threads_name">Topics</string>
+    <string name="notification_channel_threads_desc">Notifications for new topic replies</string>
 
     <string name="splash_tagline">Chahua</string>
 
@@ -72,7 +77,8 @@
     <string name="media_title">Media</string>
     <string name="common_avatar_desc">avatar</string>
     <string name="time_format_date">MMM d, HH:mm</string>
+    <string name="message_sender_format">%1$s：%2$s</string>
+    <string name="message_sender_unknown">User</string>
 
     <string name="service_running">Messaging service is running</string>
-    <string name="service_message_format">%1$s: %2$s</string>
 </resources>

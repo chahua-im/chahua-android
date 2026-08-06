@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import net.paigu.chahua.core.AppGraph
+import net.paigu.chahua.data.models.MessagePreviewDto
 import net.paigu.chahua.R
 import java.time.Instant
 import java.time.ZoneId
@@ -125,4 +126,16 @@ fun messagePreviewText(message: String?, messageType: String?): String {
         "sticker" -> stringResource(R.string.chat_sticker)
         else -> stringResource(R.string.chat_message)
     }
+}
+
+/** 列表预览：带发言人前缀，如 "user：message"。 */
+@Composable
+fun messagePreviewWithSender(
+    preview: MessagePreviewDto?,
+    unknownSender: String,
+): String {
+    if (preview == null) return stringResource(R.string.chat_message)
+    val sender = preview.sender?.name?.takeIf { it.isNotBlank() } ?: unknownSender
+    val text = messagePreviewText(preview.message, preview.messageType)
+    return stringResource(R.string.message_sender_format, sender, text)
 }

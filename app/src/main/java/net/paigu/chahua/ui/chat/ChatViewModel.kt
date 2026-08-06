@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import net.paigu.chahua.data.models.MessageDto
 import net.paigu.chahua.data.models.ReactionDto
 import net.paigu.chahua.data.models.UploadUrlRequest
+import net.paigu.chahua.data.models.UserDto
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.R
 import java.time.Instant
@@ -151,6 +152,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun myUid(): Int = AppGraph.session.snapshot().me?.uid ?: -1
+
+    fun myUser(): UserDto = AppGraph.session.snapshot().me?.let {
+        UserDto(uid = it.uid, avatarUrl = it.avatarUrl, name = it.username)
+    } ?: UserDto(uid = -1)
 
     fun sendText(text: String) {
         val chatId = _chatId.value ?: return
