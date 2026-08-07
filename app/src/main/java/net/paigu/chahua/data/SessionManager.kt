@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import net.paigu.chahua.R
 import net.paigu.chahua.data.models.MeResponse
 import java.util.UUID
 
@@ -156,7 +157,7 @@ class SessionManager(context: Context) {
         val s = snapshot
         val headers = mutableMapOf(
             "Accept" to "application/json",
-            "X-App-Version" to "1.0.0",
+            "X-App-Version" to appContext.getString(R.string.x_app_version),
         )
         headers["X-Client-Id"] = clientId
         val key = s.authKey

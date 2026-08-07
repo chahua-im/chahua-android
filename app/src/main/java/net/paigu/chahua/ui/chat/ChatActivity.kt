@@ -159,6 +159,7 @@ internal fun ChatScreen(
     val messages by viewModel.messages.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
     val context = LocalContext.current
+    val me = viewModel.myUser()
 
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -347,12 +348,18 @@ internal fun ChatScreen(
                             is ChatItem.Server -> MessageBubble(
                                 message = item.message,
                                 mine = item.message.sender.uid == viewModel.myUid(),
+                                myAvatarUrl = me.avatarUrl,
+                                myName = me.name,
                                 onOpenMedia = onOpenMedia,
                                 onReply = { viewModel.setReplyTarget(item.message) },
                                 onReact = { viewModel.toggleReaction(item.message, "\u2764\uFE0F") },
                                 onDelete = { viewModel.deleteMessage(item.message) },
                             )
-                            is ChatItem.Pending -> PendingBubble(item.pending)
+                            is ChatItem.Pending -> PendingBubble(
+                                pending = item.pending,
+                                myAvatarUrl = me.avatarUrl,
+                                myName = me.name,
+                            )
                         }
                     }
                     if (uiState.loadingOlder) {
@@ -417,6 +424,8 @@ private fun ReplyBanner(
 private fun MessageBubble(
     message: MessageDto,
     mine: Boolean,
+    myAvatarUrl: String?,
+    myName: String?,
     onOpenMedia: (url: String, kind: String) -> Unit,
     onReply: () -> Unit,
     onReact: () -> Unit,
@@ -658,12 +667,22 @@ private fun MessageBubble(
         }
         if (mine) {
             Spacer(modifier = Modifier.width(8.dp))
+            UserAvatar(
+                url = myAvatarUrl,
+                name = myName,
+                modifier = Modifier.padding(top = 20.dp),
+                size = 32.dp,
+            )
         }
     }
 }
 
 @Composable
-private fun PendingBubble(pending: PendingMessage) {
+private fun PendingBubble(
+    pending: PendingMessage,
+    myAvatarUrl: String?,
+    myName: String?,
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End,
@@ -710,5 +729,12 @@ private fun PendingBubble(pending: PendingMessage) {
                 fontSize = 10.sp,
             )
         }
+        Spacer(modifier = Modifier.width(8.dp))
+        UserAvatar(
+            url = myAvatarUrl,
+            name = myName,
+            modifier = Modifier.padding(top = 20.dp),
+            size = 32.dp,
+        )
     }
 }

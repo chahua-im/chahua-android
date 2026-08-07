@@ -64,7 +64,7 @@ import net.paigu.chahua.ui.chat.ChatViewModel
 import net.paigu.chahua.ui.common.EmptyState
 import net.paigu.chahua.ui.common.UserAvatar
 import net.paigu.chahua.ui.common.formatListTime
-import net.paigu.chahua.ui.common.messagePreviewText
+import net.paigu.chahua.ui.common.messagePreviewWithSender
 import net.paigu.chahua.ui.media.MediaViewerActivity
 import net.paigu.chahua.ui.theme.ChahuaTheme
 
@@ -321,9 +321,9 @@ private fun ChatItem(chat: ChatDto, onClick: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = messagePreviewText(
-                    chat.lastMessage?.message,
-                    chat.lastMessage?.messageType,
+                text = messagePreviewWithSender(
+                    chat.lastMessage,
+                    stringResource(R.string.message_sender_unknown),
                 ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -368,9 +368,10 @@ private fun ThreadItem(thread: ThreadDto, onClick: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = thread.threadRootMessage?.message
-                    ?: thread.lastReply?.message
-                    ?: stringResource(R.string.tab_threads),
+                text = messagePreviewWithSender(
+                    thread.lastReply ?: thread.threadRootMessage,
+                    stringResource(R.string.message_sender_unknown),
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
