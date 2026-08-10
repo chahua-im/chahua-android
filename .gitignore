@@ -77,3 +77,6 @@ obj/
 
 # Windows
 Thumbs.db
+
+#FreeFileSync
+sync.ffs_db
