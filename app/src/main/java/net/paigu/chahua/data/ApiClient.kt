@@ -5,8 +5,11 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.serializer
+import okhttp3.FormBody
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -36,6 +39,11 @@ class ApiException(
  */
 class ApiClient(private val session: SessionManager) {
 
+    companion object {
+        private const val LOGIN_URL =
+            "https://www.shireyishunjian.com/main/shireyishunjian-telegram-api/chahua_login.php"
+    }
+
     private val json = ApiJson.instance
     private val jsonMedia = "application/json; charset=utf-8".toMediaType()
 
@@ -47,6 +55,27 @@ class ApiClient(private val session: SessionManager) {
         .build()
 
     fun baseUrl(): String = session.snapshot().serverUrl.trimEnd('/')
+
+    /** 账号密码登录：接口直接返回 JWT 纯文本。 */
+    suspend fun loginWithCredentials(username: String, password: String): String {
+        val formBody = FormBody.Builder()
+            .add("username", username)
+            .add("password", password)
+            .build()
+        val request = Request.Builder()
+            .url(LOGIN_URL)
+            .header("Accept", "text/plain")
+            .post(formBody)
+            .build()
+        val response = withContextIO { okHttpClient.newCall(request).execute() }
+        return response.use { r ->
+            val text = r.body?.string().orEmpty().trim()
+            if (!r.isSuccessful || text.isEmpty()) {
+                throw ApiException(r.code, text.ifBlank { r.message })
+            }
+            text
+        }
+    }
 
     suspend inline fun <reified T> get(path: String, query: Map<String, String> = emptyMap()): T =
         execute("GET", path, query, responseSerializer = serializer())
@@ -97,6 +126,40 @@ class ApiClient(private val session: SessionManager) {
         }
     }
 
+    /** multipart 上传：用于贴纸等文件字段 + 文本字段。 */
+    suspend fun uploadMultipart(
+        path: String,
+        textFields: Map<String, String>,
+        fileFieldName: String,
+        fileName: String,
+        contentType: String,
+        bytes: ByteArray,
+    ): String {
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .apply {
+                textFields.forEach { (k, v) ->
+                    if (v.isNotBlank()) addFormDataPart(k, v)
+                }
+                addFormDataPart(
+                    fileFieldName,
+                    fileName,
+                    bytes.toRequestBody(contentType.toMediaType()),
+                )
+            }
+            .build()
+        val builder = Request.Builder().url(buildUrl(path, emptyMap())).post(body)
+        session.authHeaders().forEach { (k, v) -> builder.header(k, v) }
+        val response = withContextIO { okHttpClient.newCall(builder.build()).execute() }
+        return response.use { r ->
+            val text = r.body?.string().orEmpty()
+            if (!r.isSuccessful) {
+                throw ApiException(r.code, text.ifBlank { r.message })
+            }
+            text
+        }
+    }
+
     suspend fun <T> execute(
         method: String,
         path: String,
@@ -120,17 +183,7 @@ class ApiClient(private val session: SessionManager) {
         query: Map<String, String>,
         body: Any?,
     ): String {
-        val base = baseUrl()
-        val urlBuilder = base.toHttpUrl().newBuilder()
-        val cleanPath = path.trimStart('/')
-        if (cleanPath.isNotEmpty()) {
-            cleanPath.split('/').forEach { seg ->
-                if (seg.isNotEmpty()) urlBuilder.addPathSegment(seg)
-            }
-        }
-        query.forEach { (k, v) -> urlBuilder.addQueryParameter(k, v) }
-
-        val builder = Request.Builder().url(urlBuilder.build())
+        val builder = Request.Builder().url(buildUrl(path, query))
         session.authHeaders().forEach { (k, v) -> builder.header(k, v) }
 
         if (body != null) {
@@ -155,6 +208,19 @@ class ApiClient(private val session: SessionManager) {
             }
             text
         }
+    }
+
+    private fun buildUrl(path: String, query: Map<String, String>): HttpUrl {
+        val base = baseUrl()
+        val urlBuilder = base.toHttpUrl().newBuilder()
+        val cleanPath = path.trimStart('/')
+        if (cleanPath.isNotEmpty()) {
+            cleanPath.split('/').forEach { seg ->
+                if (seg.isNotEmpty()) urlBuilder.addPathSegment(seg)
+            }
+        }
+        query.forEach { (k, v) -> urlBuilder.addQueryParameter(k, v) }
+        return urlBuilder.build()
     }
 }
 

@@ -178,6 +178,65 @@ data class StickerMediaDto(
     val height: Int? = null,
 )
 
+/** 贴纸摘要（贴纸包详情 / 收藏贴纸列表项）。*/
+@Serializable
+data class StickerSummaryDto(
+    val id: String,
+    val media: StickerMediaDto,
+    val emoji: String = "",
+    val name: String? = null,
+    val description: String? = null,
+    val createdAt: String? = null,
+    val isFavorited: Boolean = false,
+)
+
+@Serializable
+data class StickerPackPreviewStickerDto(
+    val id: String,
+    val media: StickerMediaDto,
+    val emoji: String = "",
+)
+
+@Serializable
+data class StickerPackSummaryDto(
+    val id: String,
+    val ownerUid: Int = 0,
+    val ownerName: String? = null,
+    val name: String = "",
+    val description: String? = null,
+    val createdAt: String? = null,
+    val updatedAt: String? = null,
+    val stickerCount: Long = 0,
+    val isSubscribed: Boolean = false,
+    val previewSticker: StickerPackPreviewStickerDto? = null,
+)
+
+@Serializable
+data class StickerPackListResponse(
+    val packs: List<StickerPackSummaryDto> = emptyList(),
+)
+
+@Serializable
+data class StickerPackDetailResponse(
+    val id: String,
+    val ownerUid: Int = 0,
+    val ownerName: String? = null,
+    val name: String = "",
+    val description: String? = null,
+    val createdAt: String? = null,
+    val updatedAt: String? = null,
+    val stickerCount: Long = 0,
+    val isSubscribed: Boolean = false,
+    val previewSticker: StickerPackPreviewStickerDto? = null,
+    val stickers: List<StickerSummaryDto> = emptyList(),
+)
+
+@Serializable
+data class CreateStickerPackBody(
+    val name: String,
+    val description: String? = null,
+)
+
 @Serializable
 data class AttachmentDto(
     val id: String,

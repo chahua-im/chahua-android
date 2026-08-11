@@ -40,11 +40,17 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import net.paigu.chahua.R
+import net.paigu.chahua.core.AppGraph
+import net.paigu.chahua.data.AppLocale
 import net.paigu.chahua.ui.common.AuthAsyncImage
 import net.paigu.chahua.ui.theme.ChahuaTheme
 
 /** 媒体查看：图片支持双指缩放/双击放大，视频用系统播放器播放。 */
 class MediaViewerActivity : ComponentActivity() {
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLocale.wrap(newBase, AppGraph.settings.snapshot().language))
+    }
 
     companion object {
         private const val EXTRA_URL = "media_url"

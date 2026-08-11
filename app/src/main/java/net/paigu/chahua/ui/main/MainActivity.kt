@@ -1,6 +1,7 @@
 package net.paigu.chahua.ui.main
 
 import android.Manifest
+import android.content.Context
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge
@@ -21,6 +22,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.fragment.app.FragmentActivity
 import net.paigu.chahua.R
 import net.paigu.chahua.core.AppGraph
+import net.paigu.chahua.data.AppLocale
 import net.paigu.chahua.ui.theme.ChahuaTheme
 
 /**
@@ -33,6 +35,10 @@ class MainActivity : FragmentActivity() {
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLocale.wrap(newBase, AppGraph.settings.snapshot().language))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
