@@ -45,7 +45,7 @@ class ChatMessagingService : Service() {
         startForegroundCompat(getString(R.string.service_running))
         scope.launch {
             AppGraph.store.incoming.collect { msg ->
-                if (!AppGraph.engine.appActive) {
+                if (!AppGraph.engine.appActive && AppGraph.settings.snapshot().notificationsEnabled) {
                     notifyNewMessage(msg)
                 }
             }

@@ -1,6 +1,7 @@
 package net.paigu.chahua.data
 
 import net.paigu.chahua.data.models.AuthTokenResponse
+import net.paigu.chahua.data.models.CreateStickerPackBody
 import net.paigu.chahua.data.models.CreateMessageBody
 import net.paigu.chahua.data.models.ListChatsResponse
 import net.paigu.chahua.data.models.ListGroupsResponse
@@ -9,6 +10,10 @@ import net.paigu.chahua.data.models.ListThreadsResponse
 import net.paigu.chahua.data.models.MarkReadResponse
 import net.paigu.chahua.data.models.MeResponse
 import net.paigu.chahua.data.models.MessageDto
+import net.paigu.chahua.data.models.StickerPackDetailResponse
+import net.paigu.chahua.data.models.StickerPackListResponse
+import net.paigu.chahua.data.models.StickerPackSummaryDto
+import net.paigu.chahua.data.models.StickerSummaryDto
 import net.paigu.chahua.data.models.TicketResponse
 import net.paigu.chahua.data.models.UploadUrlRequest
 import net.paigu.chahua.data.models.UploadUrlResponse
@@ -21,6 +26,12 @@ class ChatApi(
     private val client: ApiClient,
     private val session: SessionManager,
 ) {
+
+    // ---- 登录 ----
+
+    /** 通过 shireyishunjian 账号密码接口换取 JWT（接口返回纯文本 JWT）。 */
+    suspend fun loginWithCredentials(username: String, password: String): String =
+        client.loginWithCredentials(username, password)
 
     // ---- 用户 ----
 
@@ -131,6 +142,49 @@ class ChatApi(
                 put("limit", limit.toString())
             },
         )
+
+    // ---- 贴纸 / 表情包 ----
+
+    suspend fun ownedStickerPacks(): StickerPackListResponse =
+        client.get("stickers/packs/mine/owned")
+
+    /** 当前用户收藏（订阅）的贴纸包。 */
+    suspend fun subscribedStickerPacks(): StickerPackListResponse =
+        client.get("stickers/packs/mine/subscribed")
+
+    suspend fun stickerPackDetail(packId: String): StickerPackDetailResponse =
+        client.get("stickers/packs/$packId")
+
+    suspend fun createStickerPack(name: String, description: String? = null): StickerPackSummaryDto =
+        client.post("stickers/packs", body = CreateStickerPackBody(name = name, description = description))
+
+    /** 取消收藏（退订）贴纸包。 */
+    suspend fun unsubscribeStickerPack(packId: String) {
+        client.noContent("DELETE", "stickers/packs/$packId/subscription")
+    }
+
+    /** 向自己拥有的贴纸包上传一张贴纸（multipart）。 */
+    suspend fun uploadStickerToPack(
+        packId: String,
+        fileName: String,
+        contentType: String,
+        bytes: ByteArray,
+        emoji: String,
+        name: String? = null,
+    ): StickerSummaryDto {
+        val raw = client.uploadMultipart(
+            path = "stickers/packs/$packId/stickers",
+            textFields = buildMap {
+                put("emoji", emoji)
+                name?.takeIf { it.isNotBlank() }?.let { put("name", it) }
+            },
+            fileFieldName = "file",
+            fileName = fileName,
+            contentType = contentType,
+            bytes = bytes,
+        )
+        return ApiJson.instance.decodeFromString(StickerSummaryDto.serializer(), raw)
+    }
 }
 
 @kotlinx.serialization.Serializable

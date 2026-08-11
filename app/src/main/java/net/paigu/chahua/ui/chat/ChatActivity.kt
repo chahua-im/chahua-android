@@ -17,6 +17,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -76,8 +78,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -85,15 +94,23 @@ import androidx.compose.ui.unit.sp
 import net.paigu.chahua.data.models.MessageDto
 import net.paigu.chahua.data.models.UserDto
 import net.paigu.chahua.R
+import net.paigu.chahua.core.AppGraph
+import net.paigu.chahua.data.AppLocale
+import net.paigu.chahua.data.FontSizeOption
 import net.paigu.chahua.ui.common.AuthAsyncImage
 import net.paigu.chahua.ui.common.UserAvatar
 import net.paigu.chahua.ui.common.formatTime
 import net.paigu.chahua.ui.media.MediaViewerActivity
 import net.paigu.chahua.ui.theme.ChahuaTheme
+import net.paigu.chahua.ui.theme.LocalAppSettings
 
 class ChatActivity : ComponentActivity() {
 
     private val viewModel: ChatViewModel by viewModels()
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLocale.wrap(newBase, AppGraph.settings.snapshot().language))
+    }
 
     companion object {
         private const val EXTRA_CHAT_ID = "chat_id"
@@ -160,9 +177,18 @@ internal fun ChatScreen(
     val connectionState by viewModel.connectionState.collectAsState()
     val context = LocalContext.current
     val me = viewModel.myUser()
+    val enterToSend = LocalAppSettings.current.enterToSend
 
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+
+    fun sendCurrentMessage() {
+        val text = input.trim()
+        if (text.isNotEmpty()) {
+            viewModel.sendText(text)
+            input = ""
+        }
+    }
 
     val nearBottom by remember {
         derivedStateOf {
@@ -279,9 +305,29 @@ internal fun ChatScreen(
                         TextField(
                             value = input,
                             onValueChange = { input = it },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .onPreviewKeyEvent { event ->
+                                    if (
+                                        enterToSend &&
+                                        event.type == KeyEventType.KeyDown &&
+                                        event.key == Key.Enter &&
+                                        !event.isShiftPressed
+                                    ) {
+                                        sendCurrentMessage()
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                },
                             placeholder = { Text(stringResource(R.string.chat_input_placeholder)) },
                             maxLines = 5,
+                            keyboardOptions = KeyboardOptions(
+                                imeAction = if (enterToSend) ImeAction.Send else ImeAction.Default,
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onSend = { if (enterToSend) sendCurrentMessage() },
+                            ),
                             shape = RoundedCornerShape(24.dp),
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -291,13 +337,7 @@ internal fun ChatScreen(
                             ),
                         )
                         IconButton(
-                            onClick = {
-                                val text = input.trim()
-                                if (text.isNotEmpty()) {
-                                    viewModel.sendText(text)
-                                    input = ""
-                                }
-                            },
+                            onClick = { sendCurrentMessage() },
                             enabled = input.isNotBlank(),
                         ) {
                             Icon(
@@ -433,6 +473,8 @@ private fun MessageBubble(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val fontScale = FontSizeOption.from(LocalAppSettings.current.fontSizeKey).scale
+    val messageStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = (16 * fontScale).sp)
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -508,7 +550,7 @@ private fun MessageBubble(
                     if (!message.message.isNullOrBlank()) {
                         Text(
                             text = message.message,
-                            style = MaterialTheme.typography.bodyLarge,
+                            style = messageStyle,
                             color = if (mine) {
                                 MaterialTheme.colorScheme.onPrimaryContainer
                             } else {

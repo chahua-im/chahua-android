@@ -66,6 +66,7 @@ import net.paigu.chahua.ui.common.UserAvatar
 import net.paigu.chahua.ui.common.formatListTime
 import net.paigu.chahua.ui.common.messagePreviewWithSender
 import net.paigu.chahua.ui.media.MediaViewerActivity
+import net.paigu.chahua.ui.theme.LocalAppSettings
 import net.paigu.chahua.ui.theme.ChahuaTheme
 
 /** 聊天页 Fragment：手机为单栏列表；平板（宽屏）为「左列表 + 右聊天详情」双栏布局。 */
@@ -205,6 +206,12 @@ private fun WideChatLayout(
     }
 }
 
+private enum class ChatTab(val titleRes: Int) {
+    ALL(net.paigu.chahua.R.string.tab_all),
+    GROUP(net.paigu.chahua.R.string.tab_group),
+    THREADS(net.paigu.chahua.R.string.tab_threads),
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatListScreen(
@@ -212,15 +219,35 @@ fun ChatListScreen(
     onOpenChat: (chatId: String, title: String) -> Unit,
     onOpenThread: (ThreadDto) -> Unit,
 ) {
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    val settings = LocalAppSettings.current
+    var tabIndex by rememberSaveable { mutableIntStateOf(0) }
+    val tabs = buildList {
+        if (settings.showAllTab) add(ChatTab.ALL)
+        add(ChatTab.GROUP)
+        add(ChatTab.THREADS)
+    }
+    val safeIndex = tabIndex.coerceIn(0, tabs.lastIndex.coerceAtLeast(0))
+    val tab = tabs[safeIndex]
     val chats by viewModel.chats.collectAsState()
     val threads by viewModel.threads.collectAsState()
     val loading by viewModel.loading.collectAsState()
     val error by viewModel.error.collectAsState()
     val errorText = error
 
-    LaunchedEffect(tab) {
-        if (tab == 0) viewModel.loadChats() else viewModel.loadThreads()
+    LaunchedEffect(safeIndex, settings.showAllTab) {
+        when (tab) {
+            ChatTab.ALL -> viewModel.loadAll()
+            ChatTab.GROUP -> viewModel.loadChats()
+            ChatTab.THREADS -> viewModel.loadThreads()
+        }
+    }
+
+    fun refresh() {
+        when (tab) {
+            ChatTab.ALL -> viewModel.loadAll()
+            ChatTab.GROUP -> viewModel.loadChats()
+            ChatTab.THREADS -> viewModel.loadThreads()
+        }
     }
 
     Scaffold(
@@ -229,7 +256,7 @@ fun ChatListScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.tab_chats)) },
                 actions = {
-                    IconButton(onClick = { if (tab == 0) viewModel.loadChats() else viewModel.loadThreads() }) {
+                    IconButton(onClick = { refresh() }) {
                         Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.refresh))
                     }
                 },
@@ -237,23 +264,25 @@ fun ChatListScreen(
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            SecondaryTabRow(selectedTabIndex = tab) {
-                Tab(
-                    selected = tab == 0,
-                    onClick = { tab = 0 },
-                    text = { Text(stringResource(R.string.tab_group)) },
-                )
-                Tab(
-                    selected = tab == 1,
-                    onClick = { tab = 1 },
-                    text = { Text(stringResource(R.string.tab_threads)) },
-                )
+            SecondaryTabRow(selectedTabIndex = safeIndex) {
+                tabs.forEachIndexed { index, item ->
+                    Tab(
+                        selected = safeIndex == index,
+                        onClick = { tabIndex = index },
+                        text = { Text(stringResource(item.titleRes)) },
+                    )
+                }
             }
-            if (loading && (if (tab == 0) chats else threads).isEmpty()) {
+            val currentEmpty = when (tab) {
+                ChatTab.ALL -> chats.isEmpty() && threads.isEmpty()
+                ChatTab.GROUP -> chats.isEmpty()
+                ChatTab.THREADS -> threads.isEmpty()
+            }
+            if (loading && currentEmpty) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
-            } else if (!errorText.isNullOrBlank() && (if (tab == 0) chats else threads).isEmpty()) {
+            } else if (!errorText.isNullOrBlank() && currentEmpty) {
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.Center,
@@ -264,34 +293,43 @@ fun ChatListScreen(
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    TextButton(onClick = { if (tab == 0) viewModel.loadChats() else viewModel.loadThreads() }) {
+                    TextButton(onClick = { refresh() }) {
                         Text(stringResource(R.string.retry))
                     }
                 }
             } else {
-                if (tab == 0) {
-                    if (chats.isEmpty()) {
-                        EmptyState(stringResource(R.string.empty_chats), modifier = Modifier.fillMaxSize())
-                    } else {
-                        LazyColumn {
-                            items(chats, key = { it.id }) { chat ->
-                                val title = chat.name ?: stringResource(R.string.tab_group)
-                                ChatItem(
-                                    chat = chat,
-                                    onClick = { onOpenChat(chat.id, title) },
-                                )
-                                HorizontalDivider()
+                when (tab) {
+                    ChatTab.ALL -> AllTabList(
+                        chats = chats,
+                        threads = threads,
+                        onOpenChat = onOpenChat,
+                        onOpenThread = onOpenThread,
+                    )
+                    ChatTab.GROUP -> {
+                        if (chats.isEmpty()) {
+                            EmptyState(stringResource(R.string.empty_chats), modifier = Modifier.fillMaxSize())
+                        } else {
+                            LazyColumn {
+                                items(chats, key = { it.id }) { chat ->
+                                    val title = chat.name ?: stringResource(R.string.tab_group)
+                                    ChatItem(
+                                        chat = chat,
+                                        onClick = { onOpenChat(chat.id, title) },
+                                    )
+                                    HorizontalDivider()
+                                }
                             }
                         }
                     }
-                } else {
-                    if (threads.isEmpty()) {
-                        EmptyState(stringResource(R.string.empty_threads), modifier = Modifier.fillMaxSize())
-                    } else {
-                        LazyColumn {
-                            items(threads, key = { "${it.chatId}:${it.threadRootMessage?.id}" }) { thread ->
-                                ThreadItem(thread = thread, onClick = { onOpenThread(thread) })
-                                HorizontalDivider()
+                    ChatTab.THREADS -> {
+                        if (threads.isEmpty()) {
+                            EmptyState(stringResource(R.string.empty_threads), modifier = Modifier.fillMaxSize())
+                        } else {
+                            LazyColumn {
+                                items(threads, key = { "${it.chatId}:${it.threadRootMessage?.id}" }) { thread ->
+                                    ThreadItem(thread = thread, onClick = { onOpenThread(thread) })
+                                    HorizontalDivider()
+                                }
                             }
                         }
                     }
@@ -299,6 +337,53 @@ fun ChatListScreen(
             }
         }
     }
+}
+
+@Composable
+private fun AllTabList(
+    chats: List<ChatDto>,
+    threads: List<ThreadDto>,
+    onOpenChat: (chatId: String, title: String) -> Unit,
+    onOpenThread: (ThreadDto) -> Unit,
+) {
+    if (chats.isEmpty() && threads.isEmpty()) {
+        EmptyState(stringResource(R.string.empty_all), modifier = Modifier.fillMaxSize())
+        return
+    }
+    LazyColumn {
+        if (chats.isNotEmpty()) {
+            item(key = "header_chats") {
+                SectionHeader(text = stringResource(R.string.tab_group))
+            }
+            items(chats, key = { "chat:${it.id}" }) { chat ->
+                val title = chat.name ?: stringResource(R.string.tab_group)
+                ChatItem(chat = chat, onClick = { onOpenChat(chat.id, title) })
+                HorizontalDivider()
+            }
+        }
+        if (threads.isNotEmpty()) {
+            item(key = "header_threads") {
+                SectionHeader(text = stringResource(R.string.tab_threads))
+            }
+            items(threads, key = { "thread:${it.chatId}:${it.threadRootMessage?.id}" }) { thread ->
+                ThreadItem(thread = thread, onClick = { onOpenThread(thread) })
+                HorizontalDivider()
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    )
 }
 
 @Composable

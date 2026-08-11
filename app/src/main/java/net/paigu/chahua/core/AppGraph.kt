@@ -15,6 +15,7 @@ import net.paigu.chahua.data.ChatApi
 import net.paigu.chahua.data.ChatEngine
 import net.paigu.chahua.data.ChatStore
 import net.paigu.chahua.data.SessionManager
+import net.paigu.chahua.data.SettingsManager
 import net.paigu.chahua.data.SyncManager
 import net.paigu.chahua.service.ChatMessagingService
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -30,6 +31,9 @@ object AppGraph {
         private set
 
     lateinit var session: SessionManager
+        private set
+
+    lateinit var settings: SettingsManager
         private set
 
     lateinit var apiClient: ApiClient
@@ -55,6 +59,7 @@ object AppGraph {
     fun init(application: Application) {
         app = application
         session = SessionManager(application)
+        settings = SettingsManager(application)
         apiClient = ApiClient(session)
         api = ChatApi(apiClient, session)
         store = ChatStore()

@@ -42,4 +42,20 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
             _loading.value = false
         }
     }
+
+    /** “全部”标签：同时加载群组与话题，群组在前、话题在后展示。 */
+    fun loadAll() {
+        viewModelScope.launch {
+            _loading.value = true
+            runCatching {
+                val chatsResp = api.chats(limit = 100)
+                val threadsResp = api.threads(limit = 100)
+                store.setChats(chatsResp.chats)
+                store.setThreads(threadsResp.threads)
+            }
+                .onSuccess { _error.value = null }
+                .onFailure { _error.value = it.message }
+            _loading.value = false
+        }
+    }
 }
