@@ -153,9 +153,9 @@ class ChatActivity : ComponentActivity() {
                 ChatScreen(
                     viewModel = viewModel,
                     onBack = { finish() },
-                    onOpenMedia = { url, kind ->
+                    onOpenMedia = { url, kind, fileName ->
                         startActivity(
-                            MediaViewerActivity.createIntent(this, url, kind, title),
+                            MediaViewerActivity.createIntent(this, url, kind, fileName),
                         )
                     },
                 )
@@ -169,7 +169,7 @@ class ChatActivity : ComponentActivity() {
 internal fun ChatScreen(
     viewModel: ChatViewModel,
     onBack: (() -> Unit)?,
-    onOpenMedia: (url: String, kind: String) -> Unit,
+    onOpenMedia: (url: String, kind: String, fileName: String?) -> Unit,
     consumeNavigationBarsInset: Boolean = true,
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -466,7 +466,7 @@ private fun MessageBubble(
     mine: Boolean,
     myAvatarUrl: String?,
     myName: String?,
-    onOpenMedia: (url: String, kind: String) -> Unit,
+    onOpenMedia: (url: String, kind: String, fileName: String?) -> Unit,
     onReply: () -> Unit,
     onReact: () -> Unit,
     onDelete: () -> Unit,
@@ -565,7 +565,7 @@ private fun MessageBubble(
                             modifier = Modifier
                                 .size(120.dp)
                                 .clip(RoundedCornerShape(12.dp))
-                                .clickable { onOpenMedia(stickerUrl, "image") },
+                                .clickable { onOpenMedia(stickerUrl, "image", null) },
                         )
                     }
                     message.attachments.forEach { attachment ->
@@ -578,7 +578,7 @@ private fun MessageBubble(
                                         .widthIn(max = 220.dp)
                                         .height(160.dp)
                                         .clip(RoundedCornerShape(12.dp))
-                                        .clickable { onOpenMedia(attachment.url, "image") },
+                                        .clickable { onOpenMedia(attachment.url, "image", attachment.fileName) },
                                     contentScale = ContentScale.Crop,
                                 )
                             }
@@ -587,14 +587,21 @@ private fun MessageBubble(
                                     modifier = Modifier
                                         .size(width = 200.dp, height = 120.dp)
                                         .clip(RoundedCornerShape(12.dp))
-                                        .clickable { onOpenMedia(attachment.url, "video") },
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        .clickable { onOpenMedia(attachment.url, "video", attachment.fileName) },
                                 ) {
-                                    AuthAsyncImage(
-                                        url = attachment.url,
-                                        contentDescription = attachment.fileName,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop,
-                                    )
+                                    if (attachment.fileName.isNotBlank()) {
+                                        Text(
+                                            text = attachment.fileName,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier
+                                                .align(Alignment.BottomStart)
+                                                .padding(8.dp),
+                                        )
+                                    }
                                     Box(
                                         modifier = Modifier
                                             .size(40.dp)

@@ -1,6 +1,5 @@
 <resources>
-    <string name="app_name">Chahua</string>
-    <string name="x_app_version" translatable="false">Android-1.0.0</string>
+    <string name="app_name">茶话</string>
     <string name="notification_channel_name">消息服务</string>
     <string name="notification_channel_desc">应用在后台接收新消息时显示的常驻通知</string>
     <string name="notification_channel_chats_name">群聊</string>
@@ -10,7 +9,7 @@
 
     <string name="splash_tagline">Chahua</string>
 
-    <string name="auth_welcome">欢迎使用 Chahua</string>
+    <string name="auth_welcome">欢迎使用茶话</string>
     <string name="auth_subtitle">输入用户名和密码登录</string>
     <string name="auth_server_label">服务器地址</string>
     <string name="server_url_hint">默认 https://chahui.app/_api</string>
@@ -155,6 +154,14 @@
     <string name="chat_read_image_failed">无法读取所选图片</string>
 
     <string name="media_title">媒体</string>
+    <string name="media_save">保存</string>
+    <string name="media_saved">已保存到相册</string>
+    <string name="media_save_failed">保存失败：%1$s</string>
+    <string name="media_save_permission_denied">需要存储权限才能保存</string>
+    <string name="media_play">播放</string>
+    <string name="media_pause">暂停</string>
+    <string name="media_rewind_5">快退 5 秒</string>
+    <string name="media_forward_10">快进 10 秒</string>
     <string name="common_avatar_desc">头像</string>
     <string name="time_format_date">M月d日 HH:mm</string>
     <string name="message_sender_format">%1$s：%2$s</string>

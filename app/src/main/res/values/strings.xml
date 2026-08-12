@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">Chahua</string>
-    <string name="x_app_version" translatable="false">Android-1.0.0</string>
+    <string name="x_app_version" translatable="false">Android-1.1.0</string>
     <string name="notification_channel_name">Messaging Service</string>
     <string name="notification_channel_desc">Shows notifications for new messages in background</string>
     <string name="notification_channel_chats_name">Group chats</string>
@@ -155,6 +155,14 @@
     <string name="chat_read_image_failed">Cannot read the selected image</string>
 
     <string name="media_title">Media</string>
+    <string name="media_save">Save</string>
+    <string name="media_saved">Saved to gallery</string>
+    <string name="media_save_failed">Save failed: %1$s</string>
+    <string name="media_save_permission_denied">Storage permission is required to save</string>
+    <string name="media_play">Play</string>
+    <string name="media_pause">Pause</string>
+    <string name="media_rewind_5">Rewind 5 seconds</string>
+    <string name="media_forward_10">Forward 10 seconds</string>
     <string name="common_avatar_desc">avatar</string>
     <string name="time_format_date">MMM d, HH:mm</string>
     <string name="message_sender_format">%1$s：%2$s</string>

@@ -16,7 +16,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.data.models.MessagePreviewDto
 import net.paigu.chahua.R

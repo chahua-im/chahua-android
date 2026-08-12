@@ -112,7 +112,7 @@ class ChatMessagingService : Service() {
             this,
             if (threadMode) CHANNEL_THREADS else CHANNEL_CHATS,
         )
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_notification_mono)
             .setContentTitle(title)
             .setContentText(content)
             .setContentIntent(contentIntent(msg, title, notificationId))
@@ -167,7 +167,7 @@ class ChatMessagingService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_FOREGROUND)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_notification_mono)
             .setContentTitle(getString(R.string.app_name))
             .setContentText(text)
             .setContentIntent(pendingIntent)

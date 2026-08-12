@@ -3,9 +3,14 @@ package net.paigu.chahua.core
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.core.content.ContextCompat
-import coil.ImageLoader
-import coil.util.DebugLogger
+import coil3.ImageLoader
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import coil3.request.crossfade
+import coil3.svg.SvgDecoder
+import coil3.util.DebugLogger
+import com.github.awxkee.avifcoil.decoder.HeifDecoder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -14,6 +19,7 @@ import net.paigu.chahua.data.ApiClient
 import net.paigu.chahua.data.ChatApi
 import net.paigu.chahua.data.ChatEngine
 import net.paigu.chahua.data.ChatStore
+import net.paigu.chahua.data.ErrorLoggingInterceptor
 import net.paigu.chahua.data.SessionManager
 import net.paigu.chahua.data.SettingsManager
 import net.paigu.chahua.data.SyncManager
@@ -95,9 +101,19 @@ object AppGraph {
         }
         val client = OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
+            .addInterceptor(ErrorLoggingInterceptor())
             .build()
         return ImageLoader.Builder(context)
-            .okHttpClient(client)
+            .components {
+                add(OkHttpNetworkFetcherFactory(client))
+                // 服务端默认头像为 noavatar.svg，需注册 SVG 解码器。
+                add(SvgDecoder.Factory())
+                // 仅 Android 12 以下注册 avif-coder 软解兜底 AVIF/HEIC，
+                // 新设备不加载该解码器，完全走系统解码路径。
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                    add(HeifDecoder.Factory())
+                }
+            }
             .crossfade(true)
             .logger(DebugLogger())
             .build()

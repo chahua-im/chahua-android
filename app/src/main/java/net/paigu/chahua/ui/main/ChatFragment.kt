@@ -100,9 +100,9 @@ class ChatFragment : Fragment() {
                                 ),
                             )
                         },
-                        onOpenMedia = { url, kind ->
+                        onOpenMedia = { url, kind, fileName ->
                             startActivity(
-                                MediaViewerActivity.createIntent(requireContext(), url, kind, null),
+                                MediaViewerActivity.createIntent(requireContext(), url, kind, fileName),
                             )
                         },
                     )
@@ -119,7 +119,7 @@ fun ChatContent(
     detailViewModel: ChatViewModel,
     onOpenChat: (chatId: String, title: String) -> Unit,
     onOpenThread: (ThreadDto) -> Unit,
-    onOpenMedia: (url: String, kind: String) -> Unit,
+    onOpenMedia: (url: String, kind: String, fileName: String?) -> Unit,
 ) {
     val configuration = LocalConfiguration.current
     if (configuration.screenWidthDp >= 840) {
@@ -141,7 +141,7 @@ fun ChatContent(
 private fun WideChatLayout(
     viewModel: ChatListViewModel,
     detailViewModel: ChatViewModel,
-    onOpenMedia: (url: String, kind: String) -> Unit,
+    onOpenMedia: (url: String, kind: String, fileName: String?) -> Unit,
 ) {
     var selectedChatId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedTitle by rememberSaveable { mutableStateOf<String?>(null) }

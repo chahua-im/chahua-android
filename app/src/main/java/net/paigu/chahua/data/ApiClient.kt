@@ -52,6 +52,7 @@ class ApiClient(private val session: SessionManager) {
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
+        .addInterceptor(ErrorLoggingInterceptor())
         .build()
 
     fun baseUrl(): String = session.snapshot().serverUrl.trimEnd('/')
