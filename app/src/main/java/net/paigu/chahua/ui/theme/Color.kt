@@ -20,7 +20,7 @@ val ChatBubbleMineDark = Color(0xFF1B3A22)
 val ChatBubbleOtherLight = Color(0xFFF0F1F3)
 val ChatBubbleOtherDark = Color(0xFF2A2B2E)
 
-private val GreenLight = lightColorScheme(
+internal val GreenLight = lightColorScheme(
     primary = Green40,
     onPrimary = Color.White,
     primaryContainer = Color(0xFFC8E6C9),
@@ -35,7 +35,7 @@ private val GreenLight = lightColorScheme(
     onTertiaryContainer = Color(0xFF00332E),
 )
 
-private val GreenDark = darkColorScheme(
+internal val GreenDark = darkColorScheme(
     primary = Green80,
     onPrimary = Color(0xFF0B3D0F),
     primaryContainer = ChatBubbleMineDark,
