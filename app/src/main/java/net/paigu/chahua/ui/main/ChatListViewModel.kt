@@ -16,6 +16,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
 
     val chats = store.chats
     val threads = store.threads
+    val latencyMs = AppGraph.engine.latencyMs
 
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()

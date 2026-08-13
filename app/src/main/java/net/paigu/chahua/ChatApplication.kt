@@ -4,11 +4,13 @@ import android.app.Application
 import androidx.lifecycle.ProcessLifecycleOwner
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.core.AppForegroundObserver
+import net.paigu.chahua.core.ActivityEmbeddingConfig
 
 class ChatApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         AppGraph.init(this)
+        ActivityEmbeddingConfig.configure(this)
         ProcessLifecycleOwner.get().lifecycle.addObserver(AppForegroundObserver())
     }
 }

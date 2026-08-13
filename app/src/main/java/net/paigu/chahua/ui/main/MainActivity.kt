@@ -2,24 +2,19 @@ package net.paigu.chahua.ui.main
 
 import android.Manifest
 import android.content.Context
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.res.stringResource
 import androidx.fragment.app.FragmentActivity
+import androidx.window.embedding.SplitController
 import net.paigu.chahua.R
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.data.AppLocale
@@ -31,7 +26,8 @@ import net.paigu.chahua.ui.theme.ChahuaTheme
  */
 class MainActivity : FragmentActivity() {
 
-    private var selectedTab by mutableIntStateOf(0)
+    internal var selectedTab by mutableIntStateOf(0)
+        private set
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -53,10 +49,7 @@ class MainActivity : FragmentActivity() {
             ChahuaTheme {
                 MainBottomBar(
                     selectedTab = selectedTab,
-                    onSelectTab = { tab ->
-                        selectedTab = tab
-                        showFragment(tab)
-                    },
+                    onSelectTab = { selectTab(it) },
                 )
             }
         }
@@ -66,14 +59,40 @@ class MainActivity : FragmentActivity() {
         if (savedInstanceState == null) {
             showFragment(selectedTab)
         }
+        updateBottomBarVisibility()
+
+        // 返回键规则：设置页先回主页（聊天），主页再次返回才退出 App。
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    if (selectedTab == 1) {
+                        selectTab(0)
+                    } else {
+                        finish()
+                    }
+                }
+            },
+        )
 
         requestNotificationPermissionIfNeeded()
         AppGraph.startMessaging(this)
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        updateBottomBarVisibility()
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putInt(KEY_SELECTED_TAB, selectedTab)
+    }
+
+    internal fun selectTab(tab: Int) {
+        selectedTab = tab
+        showFragment(tab)
+        updateBottomBarVisibility()
     }
 
     private fun showFragment(tab: Int) {
@@ -84,6 +103,18 @@ class MainActivity : FragmentActivity() {
             .commit()
     }
 
+    /** 不支持 Activity Embedding 的宽屏设备：聊天页由 Fragment 内双栏接管，隐藏全局底部栏，由左栏自行渲染。 */
+    private fun updateBottomBarVisibility() {
+        val wideFallback = !isActivityEmbeddingSupported() &&
+            resources.configuration.screenWidthDp >= 840
+        findViewById<View>(R.id.main_bottom_bar).visibility =
+            if (wideFallback) View.GONE else View.VISIBLE
+    }
+
+    private fun isActivityEmbeddingSupported(): Boolean =
+        SplitController.getInstance(this).splitSupportStatus ==
+            SplitController.SplitSupportStatus.SPLIT_AVAILABLE
+
     private fun requestNotificationPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= 33) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -92,26 +123,5 @@ class MainActivity : FragmentActivity() {
 
     companion object {
         private const val KEY_SELECTED_TAB = "selected_tab"
-    }
-}
-
-@Composable
-private fun MainBottomBar(
-    selectedTab: Int,
-    onSelectTab: (Int) -> Unit,
-) {
-    NavigationBar {
-        NavigationBarItem(
-            selected = selectedTab == 0,
-            onClick = { onSelectTab(0) },
-            icon = { Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null) },
-            label = { Text(stringResource(R.string.tab_chats)) },
-        )
-        NavigationBarItem(
-            selected = selectedTab == 1,
-            onClick = { onSelectTab(1) },
-            icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
-            label = { Text(stringResource(R.string.tab_settings)) },
-        )
     }
 }

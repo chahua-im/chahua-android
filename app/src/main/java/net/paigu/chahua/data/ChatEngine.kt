@@ -9,6 +9,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
@@ -40,6 +43,7 @@ class ChatEngine(
     private val apiClient: ApiClient,
     private val api: ChatApi,
     private val store: ChatStore,
+    private val latencyEnabled: () -> Boolean = { false },
 ) {
     private val json = ApiJson.instance
     private val client: OkHttpClient = apiClient.okHttpClient
@@ -61,9 +65,18 @@ class ChatEngine(
     @Volatile
     var onConnected: (() -> Unit)? = null
 
+    private val _latencyMs = MutableStateFlow<Long?>(null)
+
+    /** 最近一次 ping/pong 往返延迟（毫秒）；尚未测得或未连接时为 null。 */
+    val latencyMs: StateFlow<Long?> = _latencyMs.asStateFlow()
+
+    @Volatile
+    private var lastPingSentAt: Long? = null
+
     fun start() {
         if (!stopped) return
         stopped = false
+        _latencyMs.value = null
         runJob = scope.launch { connectionLoop() }
     }
 
@@ -73,6 +86,8 @@ class ChatEngine(
         pingJob?.cancel()
         webSocket?.close(1000, "stop")
         webSocket = null
+        lastPingSentAt = null
+        _latencyMs.value = null
         store.setConnectionState(WsStatus.DISCONNECTED)
     }
 
@@ -82,6 +97,8 @@ class ChatEngine(
         pingJob?.cancel()
         webSocket?.close(1000, "reconnect")
         webSocket = null
+        lastPingSentAt = null
+        _latencyMs.value = null
         store.setConnectionState(WsStatus.DISCONNECTED)
         runJob = scope.launch { connectionLoop() }
     }
@@ -154,8 +171,12 @@ class ChatEngine(
                 pingJob = scope.launch { pingLoop() }
                 closedSignal.await()
                 pingJob?.cancel()
+                lastPingSentAt = null
+                _latencyMs.value = null
                 store.setConnectionState(WsStatus.DISCONNECTED)
             } else {
+                lastPingSentAt = null
+                _latencyMs.value = null
                 store.setConnectionState(WsStatus.DISCONNECTED)
             }
             if (stopped) break
@@ -206,9 +227,10 @@ class ChatEngine(
 
     private suspend fun pingLoop() {
         while (scope.isActive && !stopped) {
-            delay(30_000)
+            delay(if (latencyEnabled()) 5_000 else 30_000)
             val socket = webSocket
             if (socket != null) {
+                lastPingSentAt = System.nanoTime()
                 socket.send(
                     json.encodeToString(
                         WsClientMessage(
@@ -244,7 +266,14 @@ class ChatEngine(
             "chatArchiveStateChanged" -> decodePayload<ChatArchiveStateDto>(payload)?.let {
                 store.onChatArchiveState(it.chatId, it.archived)
             }
-            "pong", "presenceUpdate", "pinAdded", "pinRemoved", "stickerPackOrderUpdated",
+            "pong" -> {
+                val sentAt = lastPingSentAt
+                if (sentAt != null) {
+                    _latencyMs.value = (System.nanoTime() - sentAt) / 1_000_000
+                    lastPingSentAt = null
+                }
+            }
+            "presenceUpdate", "pinAdded", "pinRemoved", "stickerPackOrderUpdated",
             "threadMembershipChanged" -> Unit
         }
     }

@@ -14,8 +14,6 @@ import net.paigu.chahua.R
 import java.io.File
 
 data class SettingsUiState(
-    val serverUrl: String = "",
-    val saving: Boolean = false,
     val message: String? = null,
     val loggedOut: Boolean = false,
 )
@@ -39,34 +37,47 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val sessionState = AppGraph.session.sessionState
     val settingsState = AppGraph.settings.settingsState
 
-    fun load() {
+    /** 添加一个 API 服务器到列表（不切换当前服务器）。 */
+    fun addServerUrl(url: String) {
         viewModelScope.launch {
-            val state = AppGraph.session.current()
-            _uiState.value = _uiState.value.copy(serverUrl = state.serverUrl)
+            runCatching { AppGraph.session.addServerUrl(url) }
+                .onSuccess { added ->
+                    _uiState.value = _uiState.value.copy(
+                        message = getString(
+                            if (added) R.string.settings_server_added else R.string.settings_server_exists,
+                        ),
+                    )
+                }
+                .onFailure {
+                    _uiState.value = _uiState.value.copy(
+                        message = getString(R.string.settings_server_add_failed, it.message),
+                    )
+                }
         }
     }
 
-    fun saveServerUrl(url: String) {
+    /** 切换到列表中的某个 API 服务器并重建实时连接。 */
+    fun switchServerUrl(url: String) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(saving = true, message = null)
             runCatching {
                 AppGraph.session.setServerUrl(url)
                 AppGraph.engine.reconnectNow()
             }
                 .onSuccess {
                     _uiState.value = _uiState.value.copy(
-                        saving = false,
-                        serverUrl = AppGraph.session.snapshot().serverUrl,
                         message = getString(R.string.settings_saved),
                     )
                 }
                 .onFailure {
                     _uiState.value = _uiState.value.copy(
-                        saving = false,
                         message = getString(R.string.settings_save_failed, it.message),
                     )
                 }
         }
+    }
+
+    fun dismissMessage() {
+        _uiState.value = _uiState.value.copy(message = null)
     }
 
     fun setShowAllTab(enabled: Boolean) {
@@ -94,6 +105,18 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setEnterToSend(enabled: Boolean) {
         viewModelScope.launch { AppGraph.settings.setEnterToSend(enabled) }
+    }
+
+    fun setDeveloperEnabled(enabled: Boolean) {
+        viewModelScope.launch { AppGraph.settings.setDeveloperEnabled(enabled) }
+    }
+
+    fun setShowUidInChat(enabled: Boolean) {
+        viewModelScope.launch { AppGraph.settings.setShowUidInChat(enabled) }
+    }
+
+    fun setShowLatency(enabled: Boolean) {
+        viewModelScope.launch { AppGraph.settings.setShowLatency(enabled) }
     }
 
     fun loadCacheSize() {

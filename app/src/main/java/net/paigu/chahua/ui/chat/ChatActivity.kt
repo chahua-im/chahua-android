@@ -13,6 +13,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.window.embedding.ActivityEmbeddingController
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -100,6 +101,7 @@ import net.paigu.chahua.data.FontSizeOption
 import net.paigu.chahua.ui.common.AuthAsyncImage
 import net.paigu.chahua.ui.common.UserAvatar
 import net.paigu.chahua.ui.common.formatTime
+import net.paigu.chahua.ui.main.MainActivity
 import net.paigu.chahua.ui.media.MediaViewerActivity
 import net.paigu.chahua.ui.theme.ChahuaTheme
 import net.paigu.chahua.ui.theme.LocalAppSettings
@@ -148,11 +150,14 @@ class ChatActivity : ComponentActivity() {
         val replyCount = intent.getLongExtra(EXTRA_REPLY_COUNT, 0L)
         viewModel.init(chatId, title, threadId, replyCount)
 
+        // 嵌入到右栏时隐藏返回按钮，右栏独占屏幕；手机/窄屏仍显示返回键。
+        val embedded = ActivityEmbeddingController.getInstance(this).isActivityEmbedded(this)
+
         setContent {
             ChahuaTheme {
                 ChatScreen(
                     viewModel = viewModel,
-                    onBack = { finish() },
+                    onBack = if (embedded) null else ({ finishToHome() }),
                     onOpenMedia = { url, kind, fileName ->
                         startActivity(
                             MediaViewerActivity.createIntent(this, url, kind, fileName),
@@ -161,6 +166,19 @@ class ChatActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    /** 聊天页返回时先回主页：任务栈里有 MainActivity 时直接关闭；
+     *  从通知冷启动时聊天页是栈根，则先拉起主页再关闭，保证下一次返回才退出。 */
+    private fun finishToHome() {
+        if (isTaskRoot()) {
+            startActivity(
+                Intent(this, MainActivity::class.java).addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK,
+                ),
+            )
+        }
+        finish()
     }
 }
 
@@ -175,9 +193,11 @@ internal fun ChatScreen(
     val uiState by viewModel.uiState.collectAsState()
     val messages by viewModel.messages.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
+    val latencyMs by viewModel.latencyMs.collectAsState()
     val context = LocalContext.current
     val me = viewModel.myUser()
-    val enterToSend = LocalAppSettings.current.enterToSend
+    val appSettings = LocalAppSettings.current
+    val enterToSend = appSettings.enterToSend
 
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -256,12 +276,21 @@ internal fun ChatScreen(
                     }
                 },
                 actions = {
+                    val statusText = when (connectionState) {
+                        net.paigu.chahua.data.WsStatus.CONNECTED -> stringResource(R.string.chat_status_online)
+                        net.paigu.chahua.data.WsStatus.CONNECTING -> stringResource(R.string.chat_status_connecting)
+                        net.paigu.chahua.data.WsStatus.DISCONNECTED -> stringResource(R.string.chat_status_offline)
+                    }
+                    val displayText = if (appSettings.showLatency &&
+                        connectionState == net.paigu.chahua.data.WsStatus.CONNECTED
+                    ) {
+                        val latencyText = latencyMs?.let { stringResource(R.string.chat_latency_value, it) } ?: "--"
+                        stringResource(R.string.chat_status_with_latency, statusText, latencyText)
+                    } else {
+                        statusText
+                    }
                     Text(
-                        text = when (connectionState) {
-                            net.paigu.chahua.data.WsStatus.CONNECTED -> stringResource(R.string.chat_status_online)
-                            net.paigu.chahua.data.WsStatus.CONNECTING -> stringResource(R.string.chat_status_connecting)
-                            net.paigu.chahua.data.WsStatus.DISCONNECTED -> stringResource(R.string.chat_status_offline)
-                        },
+                        text = displayText,
                         style = MaterialTheme.typography.labelSmall,
                         color = if (connectionState == net.paigu.chahua.data.WsStatus.CONNECTED) {
                             MaterialTheme.colorScheme.primary
@@ -278,11 +307,9 @@ internal fun ChatScreen(
         },
         bottomBar = {
             Column(
-                modifier = if (consumeNavigationBarsInset) {
-                    Modifier.navigationBarsPadding().imePadding()
-                } else {
-                    Modifier.imePadding()
-                },
+                // 输入区 Surface 延伸到透明导航栏后面（沉浸式），
+                // 输入控件本身通过 Row 的 navigationBarsPadding 避开导航按钮。
+                modifier = Modifier.imePadding(),
             ) {
                 ReplyBanner(
                     replyTarget = uiState.replyTarget,
@@ -292,15 +319,29 @@ internal fun ChatScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .then(
+                                if (consumeNavigationBarsInset) {
+                                    Modifier.navigationBarsPadding()
+                                } else {
+                                    Modifier
+                                },
+                            )
                             .padding(horizontal = 4.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.Bottom,
                     ) {
-                        IconButton(onClick = {
-                            pickImage.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                        IconButton(
+                            onClick = {
+                                pickImage.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                                )
+                            },
+                            modifier = Modifier.size(56.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.Image,
+                                contentDescription = stringResource(R.string.chat_send_image),
+                                modifier = Modifier.size(24.dp),
                             )
-                        }) {
-                            Icon(Icons.Filled.Image, contentDescription = stringResource(R.string.chat_send_image))
                         }
                         TextField(
                             value = input,
@@ -328,7 +369,7 @@ internal fun ChatScreen(
                             keyboardActions = KeyboardActions(
                                 onSend = { if (enterToSend) sendCurrentMessage() },
                             ),
-                            shape = RoundedCornerShape(24.dp),
+                            shape = RoundedCornerShape(10.dp),
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                                 unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -339,6 +380,7 @@ internal fun ChatScreen(
                         IconButton(
                             onClick = { sendCurrentMessage() },
                             enabled = input.isNotBlank(),
+                            modifier = Modifier.size(56.dp),
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.Send,
@@ -474,6 +516,7 @@ private fun MessageBubble(
     var menuExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val fontScale = FontSizeOption.from(LocalAppSettings.current.fontSizeKey).scale
+    val showUidInChat = LocalAppSettings.current.showUidInChat
     val messageStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = (16 * fontScale).sp)
 
     Row(
@@ -495,12 +538,23 @@ private fun MessageBubble(
         ) {
             if (!mine && message.sender.name != null) {
                 Text(
-                    text = message.sender.name,
+                    text = if (showUidInChat) {
+                        stringResource(
+                            R.string.chat_sender_name_with_uid,
+                            message.sender.name,
+                            message.sender.uid,
+                        )
+                    } else {
+                        message.sender.name
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 4.dp, bottom = 2.dp),
                 )
             }
+            val stickerOnly = message.sticker != null &&
+                message.replyToMessage == null &&
+                message.message.isNullOrBlank()
             Box {
                 Column(
                     modifier = Modifier
@@ -513,7 +567,9 @@ private fun MessageBubble(
                             ),
                         )
                         .background(
-                            if (mine) {
+                            if (stickerOnly) {
+                                Color.Transparent
+                            } else if (mine) {
                                 MaterialTheme.colorScheme.primaryContainer
                             } else {
                                 MaterialTheme.colorScheme.surfaceVariant
@@ -523,7 +579,7 @@ private fun MessageBubble(
                             onClick = { },
                             onLongClick = { menuExpanded = true },
                         )
-                        .padding(10.dp),
+                        .padding(if (stickerOnly) 0.dp else 10.dp),
                 ) {
                     message.replyToMessage?.let { reply ->
                         Surface(
