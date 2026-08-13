@@ -66,6 +66,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
     val messages: StateFlow<List<ChatItem>> = _messages.asStateFlow()
     val connectionState = store.connectionState
+    val latencyMs = AppGraph.engine.latencyMs
 
     private var initialized = false
     private var currentKey: String? = null

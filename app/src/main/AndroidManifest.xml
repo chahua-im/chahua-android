@@ -19,12 +19,15 @@
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
+        android:resizeableActivity="true"
         android:supportsRtl="true"
         android:theme="@style/Theme.HelloWorldChahua"
         android:usesCleartextTraffic="true"
         tools:targetApi="34">
 
-
+        <property
+            android:name="android.window.PROPERTY_ACTIVITY_EMBEDDING_SPLITS_ENABLED"
+            android:value="true" />
 
 
         <activity
@@ -48,13 +51,22 @@
             android:name=".ui.main.MainActivity"
             android:exported="false"
             android:label="@string/app_name"
+            android:resizeableActivity="true"
             android:theme="@style/Theme.HelloWorldChahua"
             android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".ui.main.PlaceholderActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:resizeableActivity="true"
+            android:theme="@style/Theme.HelloWorldChahua" />
 
         <activity
             android:name=".ui.chat.ChatActivity"
             android:exported="false"
             android:label="@string/app_name"
+            android:resizeableActivity="true"
             android:theme="@style/Theme.HelloWorldChahua"
             android:windowSoftInputMode="adjustResize" />
 

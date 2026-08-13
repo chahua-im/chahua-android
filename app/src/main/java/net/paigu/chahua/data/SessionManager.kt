@@ -41,6 +41,7 @@ class SessionManager(context: Context) {
 
     private object Keys {
         val SERVER_URL = stringPreferencesKey("server_url")
+        val SERVER_URLS = stringPreferencesKey("server_urls")
         val AUTH_KEY = stringPreferencesKey("auth_key")
         val AUTH_MODE = stringPreferencesKey("auth_mode") // "jwt" | "uid"
         val CLIENT_ID = stringPreferencesKey("client_id")
@@ -49,6 +50,7 @@ class SessionManager(context: Context) {
 
     data class SessionState(
         val serverUrl: String = DEFAULT_SERVER_URL,
+        val serverUrls: List<String> = emptyList(),
         val authKey: String? = null,
         val isJwt: Boolean = false,
         val clientId: String? = null,
@@ -72,8 +74,15 @@ class SessionManager(context: Context) {
     /** 当前会话状态流。 */
     val sessionState: Flow<SessionState> = prefs.data.map { p ->
         val meJson = p[Keys.ME_JSON]
+        val serverUrl = p[Keys.SERVER_URL] ?: DEFAULT_SERVER_URL
+        val storedUrls = p[Keys.SERVER_URLS]
+            ?.split('\n')
+            ?.filter { it.isNotBlank() }
+            ?.distinct()
+            .orEmpty()
         SessionState(
-            serverUrl = p[Keys.SERVER_URL] ?: DEFAULT_SERVER_URL,
+            serverUrl = serverUrl,
+            serverUrls = if (serverUrl in storedUrls) storedUrls else storedUrls + serverUrl,
             authKey = p[Keys.AUTH_KEY],
             isJwt = p[Keys.AUTH_MODE] == "jwt",
             clientId = p[Keys.CLIENT_ID],
@@ -134,13 +143,26 @@ class SessionManager(context: Context) {
     }
 
     suspend fun setServerUrl(url: String) {
-        var normalized = url.trim().trimEnd('/')
-        if (normalized.isBlank()) normalized = DEFAULT_SERVER_URL
-        if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
-            normalized = "http://$normalized"
+        val normalized = normalizeServerUrl(url)
+        val urls = readServerUrls().let { existing ->
+            if (normalized in existing) existing else existing + normalized
         }
-        prefs.edit { p -> p[Keys.SERVER_URL] = normalized }
-        snapshot = snapshot.copy(serverUrl = normalized)
+        prefs.edit { p ->
+            p[Keys.SERVER_URL] = normalized
+            p[Keys.SERVER_URLS] = urls.joinToString("\n")
+        }
+        snapshot = snapshot.copy(serverUrl = normalized, serverUrls = urls)
+    }
+
+    /** 新增一个服务器地址到列表（不切换当前服务器）。返回是否真正新增。 */
+    suspend fun addServerUrl(url: String): Boolean {
+        val normalized = normalizeServerUrl(url)
+        val existing = readServerUrls()
+        if (normalized in existing) return false
+        val urls = existing + normalized
+        prefs.edit { p -> p[Keys.SERVER_URLS] = urls.joinToString("\n") }
+        snapshot = snapshot.copy(serverUrls = urls)
+        return true
     }
 
     suspend fun clear() {
@@ -168,6 +190,22 @@ class SessionManager(context: Context) {
             headers["X-User-Id"] = key
         }
         return headers
+    }
+
+    private suspend fun readServerUrls(): List<String> =
+        prefs.data.first()[Keys.SERVER_URLS]
+            ?.split('\n')
+            ?.filter { it.isNotBlank() }
+            ?.distinct()
+            .orEmpty()
+
+    private fun normalizeServerUrl(url: String): String {
+        var normalized = url.trim().trimEnd('/')
+        if (normalized.isBlank()) return DEFAULT_SERVER_URL
+        if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
+            normalized = "http://$normalized"
+        }
+        return normalized
     }
 
 }

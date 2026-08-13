@@ -1,10 +1,12 @@
 package net.paigu.chahua.data
 
+import android.content.Context
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.serializer
+import net.paigu.chahua.R
 import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -37,7 +39,10 @@ class ApiException(
  * 轻量 HTTP 客户端封装：统一附加认证头、JSON 编解码、错误解析。
  * 错误响应为纯文本消息（非 JSON），按 API 文档直接透出。
  */
-class ApiClient(private val session: SessionManager) {
+class ApiClient(
+    private val session: SessionManager,
+    context: Context,
+) {
 
     companion object {
         private const val LOGIN_URL =
@@ -53,6 +58,7 @@ class ApiClient(private val session: SessionManager) {
         .writeTimeout(60, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .addInterceptor(ErrorLoggingInterceptor())
+        .addInterceptor(UserAgentInterceptor(context.getString(R.string.x_user_agent)))
         .build()
 
     fun baseUrl(): String = session.snapshot().serverUrl.trimEnd('/')

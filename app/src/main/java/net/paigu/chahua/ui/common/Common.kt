@@ -50,12 +50,19 @@ fun UserAvatar(
     name: String?,
     modifier: Modifier = Modifier,
     size: Dp = 40.dp,
+    showBackground: Boolean = true,
 ) {
     Box(
         modifier = modifier
             .size(size)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.secondaryContainer),
+            .then(
+                if (showBackground) {
+                    Modifier.background(MaterialTheme.colorScheme.secondaryContainer)
+                } else {
+                    Modifier
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) {
         if (!url.isNullOrBlank()) {

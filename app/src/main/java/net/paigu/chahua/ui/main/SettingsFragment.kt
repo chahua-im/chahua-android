@@ -12,12 +12,14 @@ import android.provider.Settings as AndroidSettings
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -88,13 +90,16 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import androidx.window.embedding.SplitController
 import kotlin.math.roundToInt
 import net.paigu.chahua.BuildConfig
 import net.paigu.chahua.R
@@ -106,6 +111,7 @@ import net.paigu.chahua.data.models.StickerPackSummaryDto
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.ui.auth.AuthActivity
 import net.paigu.chahua.ui.common.AuthAsyncImage
+import net.paigu.chahua.ui.common.EmptyState
 import net.paigu.chahua.ui.common.UserAvatar
 import net.paigu.chahua.ui.theme.ChahuaTheme
 import java.util.Locale
@@ -119,21 +125,45 @@ class SettingsFragment : Fragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?,
     ): View {
+        val embeddingSupported =
+            SplitController.getInstance(requireContext()).splitSupportStatus ==
+                SplitController.SplitSupportStatus.SPLIT_AVAILABLE
+        val host = activity as? MainActivity
+
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 ChahuaTheme {
-                    SettingsScreen(
-                        viewModel = viewModel,
-                        stickersViewModel = stickersViewModel,
-                        onLoggedOut = {
-                            startActivity(
-                                Intent(requireContext(), AuthActivity::class.java).addFlags(
-                                    Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK,
-                                ),
-                            )
-                        },
-                    )
+                    val wideFallback =
+                        !embeddingSupported && LocalConfiguration.current.screenWidthDp >= 840
+                    val settingsContent: @Composable () -> Unit = {
+                        SettingsScreen(
+                            viewModel = viewModel,
+                            stickersViewModel = stickersViewModel,
+                            onLoggedOut = {
+                                startActivity(
+                                    Intent(requireContext(), AuthActivity::class.java).addFlags(
+                                        Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK,
+                                    ),
+                                )
+                            },
+                        )
+                    }
+                    if (wideFallback) {
+                        WideFallbackFrame(
+                            selectedTab = host?.selectedTab ?: 1,
+                            onSelectTab = { tab -> host?.selectTab(tab) },
+                            leftContent = settingsContent,
+                            rightContent = {
+                                EmptyState(
+                                    text = stringResource(R.string.chat_select_from_list),
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            },
+                        )
+                    } else {
+                        settingsContent()
+                    }
                 }
             }
         }
@@ -165,7 +195,6 @@ private fun SettingsScreen(
 
     var pageName by rememberSaveable { mutableStateOf(SettingsPage.HOME.name) }
     var selectedPackId by rememberSaveable { mutableStateOf<String?>(null) }
-    var devUnlocked by rememberSaveable { mutableStateOf(false) }
 
     val page = remember(pageName) { SettingsPage.valueOf(pageName) }
 
@@ -177,16 +206,40 @@ private fun SettingsScreen(
         pageName = target.name
     }
 
+    // 系统返回键与顶栏返回箭头行为一致：子页面逐级返回，设置主页不拦截，
+    // 由 MainActivity 负责切回主页（聊天）。
+    fun navigateBack() {
+        when (page) {
+            SettingsPage.GENERAL,
+            SettingsPage.APPEARANCE,
+            SettingsPage.STICKERS,
+            SettingsPage.NOTIFICATIONS,
+            SettingsPage.DEVELOPER -> navigate(SettingsPage.HOME)
+            SettingsPage.CACHE,
+            SettingsPage.LANGUAGE -> navigate(SettingsPage.GENERAL)
+            SettingsPage.STICKER_PACK -> {
+                selectedPackId = null
+                navigate(SettingsPage.STICKERS)
+            }
+            SettingsPage.HOME -> Unit
+        }
+    }
+
+    BackHandler(
+        enabled = page != SettingsPage.HOME,
+        onBack = ::navigateBack,
+    )
+
     when (page) {
         SettingsPage.HOME -> HomeScreen(
             sessionState = sessionState,
-            devUnlocked = devUnlocked,
+            developerEnabled = settings.developerEnabled,
             onOpenGeneral = { navigate(SettingsPage.GENERAL) },
             onOpenAppearance = { navigate(SettingsPage.APPEARANCE) },
             onOpenStickers = { navigate(SettingsPage.STICKERS) },
             onOpenNotifications = { navigate(SettingsPage.NOTIFICATIONS) },
             onOpenDeveloper = { navigate(SettingsPage.DEVELOPER) },
-            onRevealDeveloper = { devUnlocked = true },
+            onRevealDeveloper = { viewModel.setDeveloperEnabled(true) },
             onLogout = viewModel::logout,
         )
         SettingsPage.GENERAL -> GeneralScreen(
@@ -249,7 +302,12 @@ private fun SettingsScreen(
         SettingsPage.DEVELOPER -> DeveloperScreen(
             viewModel = viewModel,
             sessionState = sessionState,
+            settings = settings,
             onBack = { navigate(SettingsPage.HOME) },
+            onCloseDeveloper = {
+                viewModel.setDeveloperEnabled(false)
+                navigate(SettingsPage.HOME)
+            },
         )
     }
 }
@@ -258,7 +316,7 @@ private fun SettingsScreen(
 @Composable
 private fun HomeScreen(
     sessionState: SessionManager.SessionState,
-    devUnlocked: Boolean,
+    developerEnabled: Boolean,
     onOpenGeneral: () -> Unit,
     onOpenAppearance: () -> Unit,
     onOpenStickers: () -> Unit,
@@ -333,7 +391,7 @@ private fun HomeScreen(
                     title = stringResource(R.string.settings_notifications),
                     onClick = onOpenNotifications,
                 )
-                if (devUnlocked) {
+                if (developerEnabled) {
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                     SettingsEntryRow(
                         icon = Icons.Filled.Code,
@@ -370,7 +428,7 @@ private fun HomeScreen(
                     }
                     .padding(top = 8.dp),
             )
-            if (devUnlocked) {
+            if (developerEnabled) {
                 Text(
                     text = stringResource(R.string.settings_developer_hint),
                     style = MaterialTheme.typography.labelSmall,
@@ -1425,17 +1483,18 @@ private fun NotificationsScreen(
 private fun DeveloperScreen(
     viewModel: SettingsViewModel,
     sessionState: SessionManager.SessionState,
+    settings: net.paigu.chahua.data.AppSettings,
     onBack: () -> Unit,
+    onCloseDeveloper: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    var serverUrl by remember { mutableStateOf(uiState.serverUrl) }
+    var showAddServer by rememberSaveable { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { viewModel.load() }
-    LaunchedEffect(uiState.serverUrl) { serverUrl = uiState.serverUrl }
     LaunchedEffect(uiState.message) {
         uiState.message?.let {
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.dismissMessage()
         }
     }
 
@@ -1462,30 +1521,97 @@ private fun DeveloperScreen(
                 .padding(16.dp),
         ) {
             Text(
+                text = stringResource(R.string.settings_developer_menu),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                DeveloperSwitchRow(
+                    title = stringResource(R.string.settings_developer_enable),
+                    description = stringResource(R.string.settings_developer_enable_desc),
+                    checked = settings.developerEnabled,
+                    onCheckedChange = { enabled ->
+                        if (!enabled) onCloseDeveloper()
+                    },
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
                 text = stringResource(R.string.settings_developer_section),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
-            OutlinedTextField(
-                value = serverUrl,
-                onValueChange = { serverUrl = it },
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                label = { Text(stringResource(R.string.settings_server_label)) },
-                singleLine = true,
-                supportingText = {
-                    Text(stringResource(R.string.server_url_hint))
-                },
+            Text(
+                text = stringResource(R.string.settings_server_list),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
             )
-            Button(
-                onClick = { viewModel.saveServerUrl(serverUrl) },
-                enabled = !uiState.saving,
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-            ) {
-                if (uiState.saving) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                } else {
-                    Text(stringResource(R.string.settings_save))
+            Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                sessionState.serverUrls.forEachIndexed { index, url ->
+                    val active = url == sessionState.serverUrl
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.switchServerUrl(url) }
+                            .padding(horizontal = 8.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = active,
+                            onClick = { viewModel.switchServerUrl(url) },
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = url,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 2,
+                            )
+                            if (active) {
+                                Text(
+                                    text = stringResource(R.string.settings_server_active),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                    }
+                    if (index < sessionState.serverUrls.lastIndex) {
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    }
                 }
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                TextButton(
+                    onClick = { showAddServer = true },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(stringResource(R.string.settings_server_add))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                text = stringResource(R.string.settings_developer_features),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                DeveloperSwitchRow(
+                    title = stringResource(R.string.settings_show_uid_in_chat),
+                    description = stringResource(R.string.settings_show_uid_in_chat_desc),
+                    checked = settings.showUidInChat,
+                    onCheckedChange = viewModel::setShowUidInChat,
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                DeveloperSwitchRow(
+                    title = stringResource(R.string.settings_show_latency),
+                    description = stringResource(R.string.settings_show_latency_desc),
+                    checked = settings.showLatency,
+                    onCheckedChange = viewModel::setShowLatency,
+                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -1521,6 +1647,90 @@ private fun DeveloperScreen(
             }
         }
     }
+
+    if (showAddServer) {
+        AddServerDialog(
+            onDismiss = { showAddServer = false },
+            onAdd = { url ->
+                viewModel.addServerUrl(url)
+                showAddServer = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun DeveloperSwitchRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+        )
+    }
+}
+
+@Composable
+private fun AddServerDialog(
+    onDismiss: () -> Unit,
+    onAdd: (String) -> Unit,
+) {
+    var url by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_server_add_dialog_title)) },
+        text = {
+            OutlinedTextField(
+                value = url,
+                onValueChange = { url = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(stringResource(R.string.settings_server_label)) },
+                singleLine = true,
+                supportingText = {
+                    Text(stringResource(R.string.server_url_hint))
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onAdd(url.trim()) },
+                enabled = url.isNotBlank(),
+            ) {
+                Text(stringResource(R.string.settings_add))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.settings_cancel))
+            }
+        },
+    )
 }
 
 @Composable

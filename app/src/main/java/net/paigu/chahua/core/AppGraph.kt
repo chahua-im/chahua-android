@@ -23,7 +23,9 @@ import net.paigu.chahua.data.ErrorLoggingInterceptor
 import net.paigu.chahua.data.SessionManager
 import net.paigu.chahua.data.SettingsManager
 import net.paigu.chahua.data.SyncManager
+import net.paigu.chahua.data.UserAgentInterceptor
 import net.paigu.chahua.service.ChatMessagingService
+import net.paigu.chahua.R
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -66,10 +68,10 @@ object AppGraph {
         app = application
         session = SessionManager(application)
         settings = SettingsManager(application)
-        apiClient = ApiClient(session)
+        apiClient = ApiClient(session, application)
         api = ChatApi(apiClient, session)
         store = ChatStore()
-        engine = ChatEngine(apiClient, api, store)
+        engine = ChatEngine(apiClient, api, store) { settings.snapshot().showLatency }
         store.currentUid = { session.snapshot().me?.uid ?: -1 }
         syncManager = SyncManager(api, store)
         engine.onConnected = { scope.launch { syncManager.syncAll() } }
@@ -102,6 +104,7 @@ object AppGraph {
         val client = OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
             .addInterceptor(ErrorLoggingInterceptor())
+            .addInterceptor(UserAgentInterceptor(context.getString(R.string.x_user_agent)))
             .build()
         return ImageLoader.Builder(context)
             .components {

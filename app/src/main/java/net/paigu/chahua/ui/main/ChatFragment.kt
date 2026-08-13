@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,12 +12,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -35,7 +34,6 @@ import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -55,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import androidx.window.embedding.SplitController
 import net.paigu.chahua.R
 import net.paigu.chahua.data.models.ChatDto
 import net.paigu.chahua.data.models.ThreadDto
@@ -79,6 +78,11 @@ class ChatFragment : Fragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?,
     ): View {
+        val embeddingSupported =
+            SplitController.getInstance(requireContext()).splitSupportStatus ==
+                SplitController.SplitSupportStatus.SPLIT_AVAILABLE
+        val host = activity as? MainActivity
+
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
@@ -86,6 +90,9 @@ class ChatFragment : Fragment() {
                     ChatContent(
                         viewModel = viewModel,
                         detailViewModel = detailViewModel,
+                        embeddingSupported = embeddingSupported,
+                        selectedTab = host?.selectedTab ?: 0,
+                        onSelectTab = { tab -> host?.selectTab(tab) },
                         onOpenChat = { chatId, title ->
                             startActivity(ChatActivity.createIntent(requireContext(), chatId, title))
                         },
@@ -117,15 +124,31 @@ class ChatFragment : Fragment() {
 fun ChatContent(
     viewModel: ChatListViewModel,
     detailViewModel: ChatViewModel,
+    embeddingSupported: Boolean,
+    selectedTab: Int,
+    onSelectTab: (Int) -> Unit,
     onOpenChat: (chatId: String, title: String) -> Unit,
     onOpenThread: (ThreadDto) -> Unit,
     onOpenMedia: (url: String, kind: String, fileName: String?) -> Unit,
 ) {
+    // 支持 Activity Embedding 的设备由系统负责左右分栏：这里只渲染聊天列表，
+    // 点击后 ChatActivity 会由 WindowManager 放到右侧容器。
+    if (embeddingSupported) {
+        ChatListScreen(
+            viewModel = viewModel,
+            onOpenChat = onOpenChat,
+            onOpenThread = onOpenThread,
+        )
+        return
+    }
+
     val configuration = LocalConfiguration.current
     if (configuration.screenWidthDp >= 840) {
         WideChatLayout(
             viewModel = viewModel,
             detailViewModel = detailViewModel,
+            selectedTab = selectedTab,
+            onSelectTab = onSelectTab,
             onOpenMedia = onOpenMedia,
         )
     } else {
@@ -141,6 +164,8 @@ fun ChatContent(
 private fun WideChatLayout(
     viewModel: ChatListViewModel,
     detailViewModel: ChatViewModel,
+    selectedTab: Int,
+    onSelectTab: (Int) -> Unit,
     onOpenMedia: (url: String, kind: String, fileName: String?) -> Unit,
 ) {
     var selectedChatId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -148,12 +173,18 @@ private fun WideChatLayout(
     var selectedThreadId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedReplyCount by rememberSaveable { mutableStateOf(0L) }
 
-    Row(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .width(360.dp)
-                .fillMaxHeight(),
-        ) {
+    // 宽屏双栏中打开聊天时，返回键先关闭聊天回到列表（主页）。
+    BackHandler(enabled = selectedChatId != null) {
+        selectedChatId = null
+        selectedTitle = null
+        selectedThreadId = null
+        selectedReplyCount = 0L
+    }
+
+    WideFallbackFrame(
+        selectedTab = selectedTab,
+        onSelectTab = onSelectTab,
+        leftContent = {
             ChatListScreen(
                 viewModel = viewModel,
                 onOpenChat = { chatId, title ->
@@ -169,17 +200,8 @@ private fun WideChatLayout(
                     selectedReplyCount = thread.replyCount
                 },
             )
-        }
-        VerticalDivider(
-            modifier = Modifier
-                .fillMaxHeight()
-                .width(1.dp),
-        )
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight(),
-        ) {
+        },
+        rightContent = {
             val chatId = selectedChatId
             if (chatId == null) {
                 EmptyState(
@@ -199,11 +221,11 @@ private fun WideChatLayout(
                     viewModel = detailViewModel,
                     onBack = null,
                     onOpenMedia = onOpenMedia,
-                    consumeNavigationBarsInset = false,
+                    consumeNavigationBarsInset = true,
                 )
             }
-        }
-    }
+        },
+    )
 }
 
 private enum class ChatTab(val titleRes: Int) {
@@ -233,6 +255,7 @@ fun ChatListScreen(
     val loading by viewModel.loading.collectAsState()
     val error by viewModel.error.collectAsState()
     val errorText = error
+    val latencyMs by viewModel.latencyMs.collectAsState()
 
     LaunchedEffect(safeIndex, settings.showAllTab) {
         when (tab) {
@@ -256,6 +279,14 @@ fun ChatListScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.tab_chats)) },
                 actions = {
+                    if (settings.showLatency) {
+                        Text(
+                            text = latencyMs?.let { stringResource(R.string.chat_latency_value, it) } ?: "--",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(end = 4.dp),
+                        )
+                    }
                     IconButton(onClick = { refresh() }) {
                         Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.refresh))
                     }
@@ -395,7 +426,7 @@ private fun ChatItem(chat: ChatDto, onClick: () -> Unit) {
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        UserAvatar(url = chat.avatar, name = chat.name, size = 48.dp)
+        UserAvatar(url = chat.avatar, name = chat.name, size = 48.dp, showBackground = false)
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
