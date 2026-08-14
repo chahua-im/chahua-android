@@ -1,5 +1,6 @@
 package net.paigu.chahua.ui.main
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
@@ -20,7 +21,10 @@ internal fun MainBottomBar(
     selectedTab: Int,
     onSelectTab: (Int) -> Unit,
 ) {
-    NavigationBar(modifier = Modifier.height(84.dp)) {
+    NavigationBar(
+        modifier = Modifier.height(84.dp),
+        windowInsets = WindowInsets(0, 0, 0, 0),
+    ) {
         NavigationBarItem(
             selected = selectedTab == 0,
             onClick = { onSelectTab(0) },

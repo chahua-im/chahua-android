@@ -105,6 +105,7 @@ import net.paigu.chahua.BuildConfig
 import net.paigu.chahua.R
 import net.paigu.chahua.data.AppLanguage
 import net.paigu.chahua.data.FontSizeOption
+import net.paigu.chahua.data.LogLevelOption
 import net.paigu.chahua.data.SessionManager
 import net.paigu.chahua.data.ThemeColorOption
 import net.paigu.chahua.data.models.StickerPackSummaryDto
@@ -245,10 +246,12 @@ private fun SettingsScreen(
         SettingsPage.GENERAL -> GeneralScreen(
             currentLanguage = AppLanguage.from(settings.language),
             enterToSend = settings.enterToSend,
+            showAvatarsInMessages = settings.showAvatarsInMessages,
             onBack = { navigate(SettingsPage.HOME) },
             onOpenLanguage = { navigate(SettingsPage.LANGUAGE) },
             onOpenCache = { navigate(SettingsPage.CACHE) },
             onEnterToSendChange = viewModel::setEnterToSend,
+            onShowAvatarsInMessagesChange = viewModel::setShowAvatarsInMessages,
         )
         SettingsPage.CACHE -> CacheScreen(
             viewModel = viewModel,
@@ -497,10 +500,12 @@ private fun SettingsEntryRow(
 private fun GeneralScreen(
     currentLanguage: AppLanguage,
     enterToSend: Boolean,
+    showAvatarsInMessages: Boolean,
     onBack: () -> Unit,
     onOpenLanguage: () -> Unit,
     onOpenCache: () -> Unit,
     onEnterToSendChange: (Boolean) -> Unit,
+    onShowAvatarsInMessagesChange: (Boolean) -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -555,6 +560,33 @@ private fun GeneralScreen(
                     Switch(
                         checked = enterToSend,
                         onCheckedChange = onEnterToSendChange,
+                    )
+                }
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onShowAvatarsInMessagesChange(!showAvatarsInMessages) }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.settings_show_avatars_in_messages),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_show_avatars_in_messages_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Switch(
+                        checked = showAvatarsInMessages,
+                        onCheckedChange = onShowAvatarsInMessagesChange,
                     )
                 }
             }
@@ -1242,9 +1274,7 @@ private fun StickerPackDetailScreen(
                                 url = sticker.media.url,
                                 contentDescription = sticker.emoji,
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(100.dp)
-                                    .clip(RoundedCornerShape(12.dp)),
+                                    .size(72.dp),
                                 contentScale = ContentScale.Fit,
                             )
                         }
@@ -1490,6 +1520,7 @@ private fun DeveloperScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     var showAddServer by rememberSaveable { mutableStateOf(false) }
+    var showLogLevelDialog by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(uiState.message) {
         uiState.message?.let {
@@ -1612,6 +1643,35 @@ private fun DeveloperScreen(
                     checked = settings.showLatency,
                     onCheckedChange = viewModel::setShowLatency,
                 )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showLogLevelDialog = true }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.settings_log_level),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            text = stringResource(
+                                LogLevelOption.from(settings.logLevel).displayNameRes,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -1657,6 +1717,17 @@ private fun DeveloperScreen(
             },
         )
     }
+
+    if (showLogLevelDialog) {
+        LogLevelDialog(
+            currentKey = settings.logLevel,
+            onSelect = { key ->
+                viewModel.setLogLevel(key)
+                showLogLevelDialog = false
+            },
+            onDismiss = { showLogLevelDialog = false },
+        )
+    }
 }
 
 @Composable
@@ -1692,6 +1763,43 @@ private fun DeveloperSwitchRow(
             onCheckedChange = onCheckedChange,
         )
     }
+}
+
+@Composable
+private fun LogLevelDialog(
+    currentKey: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_log_level)) },
+        text = {
+            Column {
+                LogLevelOption.entries.forEach { option ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(option.key) }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = option.key == currentKey,
+                            onClick = { onSelect(option.key) },
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(option.displayNameRes))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.settings_cancel))
+            }
+        },
+    )
 }
 
 @Composable

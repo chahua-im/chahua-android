@@ -180,6 +180,31 @@ class ChatStore {
         }
     }
 
+    /** 更新会话免打扰状态（群组信息页静音/取消静音后调用）。*/
+    fun setChatMuted(chatId: String, mutedUntil: String?) {
+        _chats.update { chats ->
+            chats.map { if (it.id == chatId) it.copy(mutedUntil = mutedUntil) else it }
+        }
+    }
+
+    /** 退出群组后从本地列表中移除该会话及其消息。*/
+    fun removeChat(chatId: String) {
+        _chats.update { chats -> chats.filterNot { it.id == chatId } }
+        _threads.update { threads -> threads.filterNot { it.chatId == chatId } }
+        _messages.update { messages ->
+            messages.filterKeys { key -> key == chatId || key.startsWith("$chatId:") }
+        }
+    }
+
+    /** 归档话题后从活跃话题列表移除。*/
+    fun removeThread(chatId: String, threadRootId: String) {
+        _threads.update { threads ->
+            threads.filterNot {
+                it.chatId == chatId && it.threadRootMessage?.id == threadRootId
+            }
+        }
+    }
+
     fun markChatRead(chatId: String, lastReadMessageId: String?, unreadCount: Long) {
         _chats.update { chats ->
             chats.map {

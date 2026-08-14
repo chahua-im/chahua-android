@@ -70,6 +70,8 @@ data class AppSettings(
     val developerEnabled: Boolean = false,
     val showUidInChat: Boolean = false,
     val showLatency: Boolean = false,
+    val showAvatarsInMessages: Boolean = true,
+    val logLevel: String = LogLevelOption.INFO.key,
 )
 
 /**
@@ -88,6 +90,8 @@ class SettingsManager(context: Context) {
         val DEVELOPER_ENABLED = booleanPreferencesKey("developer_enabled")
         val SHOW_UID_IN_CHAT = booleanPreferencesKey("show_uid_in_chat")
         val SHOW_LATENCY = booleanPreferencesKey("show_latency")
+        val SHOW_AVATARS_IN_MESSAGES = booleanPreferencesKey("show_avatars_in_messages")
+        val LOG_LEVEL = stringPreferencesKey("log_level")
     }
 
     private val appContext = context.applicationContext
@@ -105,6 +109,8 @@ class SettingsManager(context: Context) {
             developerEnabled = p[Keys.DEVELOPER_ENABLED] ?: false,
             showUidInChat = p[Keys.SHOW_UID_IN_CHAT] ?: false,
             showLatency = p[Keys.SHOW_LATENCY] ?: false,
+            showAvatarsInMessages = p[Keys.SHOW_AVATARS_IN_MESSAGES] ?: true,
+            logLevel = p[Keys.LOG_LEVEL] ?: LogLevelOption.INFO.key,
         )
     }
 
@@ -113,8 +119,12 @@ class SettingsManager(context: Context) {
     private var snapshot: AppSettings = runBlocking { settingsState.first() }
 
     init {
+        AppLog.minLevel = LogLevelOption.from(snapshot.logLevel)
         scope.launch {
-            settingsState.collect { snapshot = it }
+            settingsState.collect {
+                snapshot = it
+                AppLog.minLevel = LogLevelOption.from(it.logLevel)
+            }
         }
     }
 
@@ -168,6 +178,18 @@ class SettingsManager(context: Context) {
     suspend fun setShowLatency(enabled: Boolean) {
         prefs.edit { it[Keys.SHOW_LATENCY] = enabled }
         snapshot = snapshot.copy(showLatency = enabled)
+    }
+
+    suspend fun setShowAvatarsInMessages(enabled: Boolean) {
+        prefs.edit { it[Keys.SHOW_AVATARS_IN_MESSAGES] = enabled }
+        snapshot = snapshot.copy(showAvatarsInMessages = enabled)
+    }
+
+    suspend fun setLogLevel(key: String) {
+        val normalized = LogLevelOption.from(key).key
+        prefs.edit { it[Keys.LOG_LEVEL] = normalized }
+        snapshot = snapshot.copy(logLevel = normalized)
+        AppLog.minLevel = LogLevelOption.from(normalized)
     }
 }
 

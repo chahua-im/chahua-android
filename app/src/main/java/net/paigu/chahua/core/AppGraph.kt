@@ -10,6 +10,7 @@ import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
 import coil3.svg.SvgDecoder
 import coil3.util.DebugLogger
+import coil3.gif.GifDecoder
 import com.github.awxkee.avifcoil.decoder.HeifDecoder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -109,6 +110,7 @@ object AppGraph {
         return ImageLoader.Builder(context)
             .components {
                 add(OkHttpNetworkFetcherFactory(client))
+                add(GifDecoder.Factory())
                 // 服务端默认头像为 noavatar.svg，需注册 SVG 解码器。
                 add(SvgDecoder.Factory())
                 // 仅 Android 12 以下注册 avif-coder 软解兜底 AVIF/HEIC，

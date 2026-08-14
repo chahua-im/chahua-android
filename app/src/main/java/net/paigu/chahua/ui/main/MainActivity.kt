@@ -9,6 +9,8 @@ import android.view.View
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
@@ -40,6 +42,14 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_main)
+
+        // 三键导航（1920x1080 / 440dpi 等）下，系统导航栏会遮住 XML 底部栏；
+        // 显式把底部 inset 作为 padding 交给底栏 ComposeView。
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main_bottom_bar)) { view, insets ->
+            val bottom = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
+            view.setPadding(0, 0, 0, bottom)
+            insets
+        }
 
         if (savedInstanceState != null) {
             selectedTab = savedInstanceState.getInt(KEY_SELECTED_TAB, 0)

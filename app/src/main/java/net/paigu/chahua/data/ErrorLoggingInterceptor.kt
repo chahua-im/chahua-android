@@ -1,6 +1,5 @@
 package net.paigu.chahua.data
 
-import android.util.Log
 import okhttp3.Interceptor
 import okhttp3.Response
 import java.io.IOException
@@ -17,13 +16,13 @@ class ErrorLoggingInterceptor : Interceptor {
         val request = chain.request()
         return try {
             val response = chain.proceed(request)
-            if (!response.isSuccessful) {
+            if (response.code != 101 && !response.isSuccessful) {
                 val body = try {
                     response.peekBody(MAX_BODY_SNIPPET).string().trim()
                 } catch (_: Exception) {
                     ""
                 }
-                Log.e(
+                AppLog.e(
                     TAG,
                     "HTTP ${response.code} ${request.method} ${request.url}" +
                         if (body.isBlank()) " (${response.message})" else ": $body",
@@ -31,7 +30,7 @@ class ErrorLoggingInterceptor : Interceptor {
             }
             response
         } catch (e: IOException) {
-            Log.e(TAG, "网络请求失败 ${request.method} ${request.url}", e)
+            AppLog.e(TAG, "网络请求失败 ${request.method} ${request.url}", e)
             throw e
         }
     }
