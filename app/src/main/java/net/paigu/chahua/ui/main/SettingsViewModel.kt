@@ -119,6 +119,18 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { AppGraph.settings.setShowLatency(enabled) }
     }
 
+    fun setShowAvatarsInMessages(enabled: Boolean) {
+        viewModelScope.launch { AppGraph.settings.setShowAvatarsInMessages(enabled) }
+    }
+
+    fun setPinnedReactions(reactions: List<String>) {
+        viewModelScope.launch { AppGraph.settings.setPinnedReactions(reactions) }
+    }
+
+    fun setLogLevel(key: String) {
+        viewModelScope.launch { AppGraph.settings.setLogLevel(key) }
+    }
+
     fun loadCacheSize() {
         viewModelScope.launch {
             _cacheState.value = _cacheState.value.copy(computing = true, message = null)

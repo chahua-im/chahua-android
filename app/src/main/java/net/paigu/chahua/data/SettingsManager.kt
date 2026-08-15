@@ -70,7 +70,16 @@ data class AppSettings(
     val developerEnabled: Boolean = false,
     val showUidInChat: Boolean = false,
     val showLatency: Boolean = false,
-)
+    val showAvatarsInMessages: Boolean = true,
+    val pinnedReactions: List<String> = DEFAULT_PINNED_REACTIONS,
+    val recentReactions: List<String> = DEFAULT_RECENT_REACTIONS,
+    val logLevel: String = LogLevelOption.INFO.key,
+) {
+    /** 快捷表情条：设置里钉住的优先，其余取最近用过的，最多 [MAX_PINNED_REACTIONS] 个。 */
+    fun quickReactionEmojis(): List<String> =
+        (pinnedReactions + recentReactions.filterNot { it in pinnedReactions })
+            .take(MAX_PINNED_REACTIONS)
+}
 
 /**
  * 应用设置管理：外观（全部标签、字体大小、主题色）、语言、通知开关。
@@ -88,6 +97,15 @@ class SettingsManager(context: Context) {
         val DEVELOPER_ENABLED = booleanPreferencesKey("developer_enabled")
         val SHOW_UID_IN_CHAT = booleanPreferencesKey("show_uid_in_chat")
         val SHOW_LATENCY = booleanPreferencesKey("show_latency")
+        val SHOW_AVATARS_IN_MESSAGES = booleanPreferencesKey("show_avatars_in_messages")
+        val PINNED_REACTIONS = stringPreferencesKey("pinned_reactions")
+        val RECENT_REACTIONS = stringPreferencesKey("recent_reactions")
+        val LOG_LEVEL = stringPreferencesKey("log_level")
+    }
+
+    private companion object {
+        /** 列表分隔符：表情符号中不会出现，用于在单个字符串中保序存储。 */
+        const val LIST_SEPARATOR = "\u001F"
     }
 
     private val appContext = context.applicationContext
@@ -105,6 +123,14 @@ class SettingsManager(context: Context) {
             developerEnabled = p[Keys.DEVELOPER_ENABLED] ?: false,
             showUidInChat = p[Keys.SHOW_UID_IN_CHAT] ?: false,
             showLatency = p[Keys.SHOW_LATENCY] ?: false,
+            showAvatarsInMessages = p[Keys.SHOW_AVATARS_IN_MESSAGES] ?: true,
+            pinnedReactions = normalizePinnedReactions(
+                decodeList(p[Keys.PINNED_REACTIONS]) ?: DEFAULT_PINNED_REACTIONS,
+            ),
+            recentReactions = normalizeRecentReactions(
+                decodeList(p[Keys.RECENT_REACTIONS]) ?: DEFAULT_RECENT_REACTIONS,
+            ),
+            logLevel = p[Keys.LOG_LEVEL] ?: LogLevelOption.INFO.key,
         )
     }
 
@@ -113,8 +139,12 @@ class SettingsManager(context: Context) {
     private var snapshot: AppSettings = runBlocking { settingsState.first() }
 
     init {
+        AppLog.minLevel = LogLevelOption.from(snapshot.logLevel)
         scope.launch {
-            settingsState.collect { snapshot = it }
+            settingsState.collect {
+                snapshot = it
+                AppLog.minLevel = LogLevelOption.from(it.logLevel)
+            }
         }
     }
 
@@ -169,6 +199,44 @@ class SettingsManager(context: Context) {
         prefs.edit { it[Keys.SHOW_LATENCY] = enabled }
         snapshot = snapshot.copy(showLatency = enabled)
     }
+
+    suspend fun setShowAvatarsInMessages(enabled: Boolean) {
+        prefs.edit { it[Keys.SHOW_AVATARS_IN_MESSAGES] = enabled }
+        snapshot = snapshot.copy(showAvatarsInMessages = enabled)
+    }
+
+    /** 保存钉住的快捷表态（去重并限制最多 [MAX_PINNED_REACTIONS] 个）。 */
+    suspend fun setPinnedReactions(reactions: List<String>) {
+        val normalized = normalizePinnedReactions(reactions)
+        prefs.edit { it[Keys.PINNED_REACTIONS] = encodeList(normalized) }
+        snapshot = snapshot.copy(pinnedReactions = normalized)
+    }
+
+    /** 记录一次最近使用表态；钉住的表态不再重复记录。 */
+    suspend fun addRecentReaction(emoji: String) {
+        if (emoji.isBlank() || emoji in snapshot.pinnedReactions) return
+        val normalized = normalizeRecentReactions(listOf(emoji) + snapshot.recentReactions)
+        prefs.edit { it[Keys.RECENT_REACTIONS] = encodeList(normalized) }
+        snapshot = snapshot.copy(recentReactions = normalized)
+    }
+
+    suspend fun setLogLevel(key: String) {
+        val normalized = LogLevelOption.from(key).key
+        prefs.edit { it[Keys.LOG_LEVEL] = normalized }
+        snapshot = snapshot.copy(logLevel = normalized)
+        AppLog.minLevel = LogLevelOption.from(normalized)
+    }
+
+    private fun normalizePinnedReactions(reactions: List<String>?): List<String> =
+        reactions.orEmpty().distinct().filter { it.isNotBlank() }.take(MAX_PINNED_REACTIONS)
+
+    private fun normalizeRecentReactions(reactions: List<String>?): List<String> =
+        reactions.orEmpty().distinct().filter { it.isNotBlank() }.take(MAX_RECENT_REACTIONS)
+
+    private fun encodeList(list: List<String>): String = list.joinToString(LIST_SEPARATOR)
+
+    private fun decodeList(value: String?): List<String>? =
+        value?.takeIf { it.isNotEmpty() }?.split(LIST_SEPARATOR)
 }
 
 /** 按用户选择的语言包装 Context，使 stringResource 等读取对应语言资源。 */

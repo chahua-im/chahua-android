@@ -113,18 +113,22 @@ class ChatEngine(
         }
     }
 
-    /** 发送文本消息（话题内回复时自动走线程回复端点）。 */
+    /** 发送文本消息（话题内回复时自动走话题回复端点）。 */
     suspend fun sendMessage(
         chatId: String,
-        text: String,
+        text: String?,
         replyToId: String? = null,
         replyRootId: String? = null,
         attachmentIds: List<String> = emptyList(),
+        messageType: String = "text",
+        stickerId: String? = null,
         clientGeneratedId: String? = null,
     ): Result<MessageDto> {
         val cgid = clientGeneratedId ?: "android-${UUID.randomUUID()}"
         val body = CreateMessageBody(
             message = text,
+            messageType = messageType,
+            stickerId = stickerId,
             clientGeneratedId = cgid,
             replyToId = replyToId,
             replyRootId = replyRootId,
@@ -153,10 +157,12 @@ class ChatEngine(
                     stopped = true
                     break
                 }
+                AppLog.w("ChatEngine", "connect failed: ${e.message}")
                 store.setError("连接失败: ${e.message}")
                 delay(backoff(attempt++))
                 continue
             } catch (e: Exception) {
+                AppLog.w("ChatEngine", "connect failed: ${e.message}")
                 store.setError("连接失败: ${e.message}")
                 delay(backoff(attempt++))
                 continue
@@ -167,6 +173,7 @@ class ChatEngine(
                 attempt = 0
                 store.setConnectionState(WsStatus.CONNECTED)
                 store.setError(null)
+                AppLog.d("ChatEngine", "WebSocket connected")
                 onConnected?.invoke()
                 pingJob = scope.launch { pingLoop() }
                 closedSignal.await()

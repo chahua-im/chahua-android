@@ -1,12 +1,15 @@
 package net.paigu.chahua.ui.main
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,7 +23,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material3.Badge
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -28,6 +33,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.SecondaryTabRow
@@ -46,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -64,6 +71,8 @@ import net.paigu.chahua.ui.common.EmptyState
 import net.paigu.chahua.ui.common.UserAvatar
 import net.paigu.chahua.ui.common.formatListTime
 import net.paigu.chahua.ui.common.messagePreviewWithSender
+import net.paigu.chahua.ui.group.GroupInfoActivity
+import net.paigu.chahua.ui.invite.InviteRedeemActivity
 import net.paigu.chahua.ui.media.MediaViewerActivity
 import net.paigu.chahua.ui.theme.LocalAppSettings
 import net.paigu.chahua.ui.theme.ChahuaTheme
@@ -72,6 +81,23 @@ import net.paigu.chahua.ui.theme.ChahuaTheme
 class ChatFragment : Fragment() {
     private val viewModel: ChatListViewModel by viewModels()
     private val detailViewModel: ChatViewModel by viewModels()
+    private val inviteLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val chatId = result.data?.getStringExtra(InviteRedeemActivity.EXTRA_CHAT_ID)
+            val chatName = result.data?.getStringExtra(InviteRedeemActivity.EXTRA_CHAT_NAME)
+            if (chatId != null) {
+                startActivity(
+                    ChatActivity.createIntent(
+                        requireContext(),
+                        chatId,
+                        chatName ?: chatId,
+                    ),
+                )
+            }
+        }
+    }
 
     override fun onCreateView(
         inflater: android.view.LayoutInflater,
@@ -107,9 +133,26 @@ class ChatFragment : Fragment() {
                                 ),
                             )
                         },
+                        onOpenArchivedThread = { thread ->
+                            startActivity(
+                                ChatActivity.createThreadIntent(
+                                    context = requireContext(),
+                                    chatId = thread.chatId,
+                                    title = thread.chatName,
+                                    threadRootId = thread.threadRootMessage?.id,
+                                    replyCount = thread.replyCount,
+                                    archived = true,
+                                ),
+                            )
+                        },
                         onOpenMedia = { url, kind, fileName ->
                             startActivity(
                                 MediaViewerActivity.createIntent(requireContext(), url, kind, fileName),
+                            )
+                        },
+                        onOpenInvite = {
+                            inviteLauncher.launch(
+                                InviteRedeemActivity.createIntent(requireContext()),
                             )
                         },
                     )
@@ -129,7 +172,9 @@ fun ChatContent(
     onSelectTab: (Int) -> Unit,
     onOpenChat: (chatId: String, title: String) -> Unit,
     onOpenThread: (ThreadDto) -> Unit,
+    onOpenArchivedThread: (ThreadDto) -> Unit,
     onOpenMedia: (url: String, kind: String, fileName: String?) -> Unit,
+    onOpenInvite: () -> Unit,
 ) {
     // 支持 Activity Embedding 的设备由系统负责左右分栏：这里只渲染聊天列表，
     // 点击后 ChatActivity 会由 WindowManager 放到右侧容器。
@@ -138,6 +183,8 @@ fun ChatContent(
             viewModel = viewModel,
             onOpenChat = onOpenChat,
             onOpenThread = onOpenThread,
+            onOpenArchivedThread = onOpenArchivedThread,
+            onOpenInvite = onOpenInvite,
         )
         return
     }
@@ -149,13 +196,17 @@ fun ChatContent(
             detailViewModel = detailViewModel,
             selectedTab = selectedTab,
             onSelectTab = onSelectTab,
+            onOpenArchivedThread = onOpenArchivedThread,
             onOpenMedia = onOpenMedia,
+            onOpenInvite = onOpenInvite,
         )
     } else {
         ChatListScreen(
             viewModel = viewModel,
             onOpenChat = onOpenChat,
             onOpenThread = onOpenThread,
+            onOpenArchivedThread = onOpenArchivedThread,
+            onOpenInvite = onOpenInvite,
         )
     }
 }
@@ -166,12 +217,16 @@ private fun WideChatLayout(
     detailViewModel: ChatViewModel,
     selectedTab: Int,
     onSelectTab: (Int) -> Unit,
+    onOpenArchivedThread: (ThreadDto) -> Unit,
     onOpenMedia: (url: String, kind: String, fileName: String?) -> Unit,
+    onOpenInvite: () -> Unit,
 ) {
+    val context = LocalContext.current
     var selectedChatId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedTitle by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedThreadId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedReplyCount by rememberSaveable { mutableStateOf(0L) }
+    var selectedThreadArchived by rememberSaveable { mutableStateOf(false) }
 
     // 宽屏双栏中打开聊天时，返回键先关闭聊天回到列表（主页）。
     BackHandler(enabled = selectedChatId != null) {
@@ -179,6 +234,7 @@ private fun WideChatLayout(
         selectedTitle = null
         selectedThreadId = null
         selectedReplyCount = 0L
+        selectedThreadArchived = false
     }
 
     WideFallbackFrame(
@@ -192,13 +248,23 @@ private fun WideChatLayout(
                     selectedTitle = title
                     selectedThreadId = null
                     selectedReplyCount = 0L
+                    selectedThreadArchived = false
                 },
                 onOpenThread = { thread ->
                     selectedChatId = thread.chatId
                     selectedTitle = thread.chatName
                     selectedThreadId = thread.threadRootMessage?.id
                     selectedReplyCount = thread.replyCount
+                    selectedThreadArchived = false
                 },
+                onOpenArchivedThread = { thread ->
+                    selectedChatId = thread.chatId
+                    selectedTitle = thread.chatName
+                    selectedThreadId = thread.threadRootMessage?.id
+                    selectedReplyCount = thread.replyCount
+                    selectedThreadArchived = true
+                },
+                onOpenInvite = onOpenInvite,
             )
         },
         rightContent = {
@@ -220,6 +286,30 @@ private fun WideChatLayout(
                 ChatScreen(
                     viewModel = detailViewModel,
                     onBack = null,
+                    onOpenGroupInfo = {
+                        context.startActivity(
+                            GroupInfoActivity.createIntent(context, chatId),
+                        )
+                    },
+                    threadArchived = selectedThreadArchived,
+                    onArchiveDone = {
+                        selectedChatId = null
+                        selectedTitle = null
+                        selectedThreadId = null
+                        selectedReplyCount = 0L
+                        selectedThreadArchived = false
+                    },
+                    onOpenThread = { rootId ->
+                        context.startActivity(
+                            ChatActivity.createThreadIntent(
+                                context = context,
+                                chatId = chatId,
+                                title = selectedTitle ?: chatId,
+                                threadRootId = rootId,
+                                replyCount = 0L,
+                            ),
+                        )
+                    },
                     onOpenMedia = onOpenMedia,
                     consumeNavigationBarsInset = true,
                 )
@@ -240,9 +330,12 @@ fun ChatListScreen(
     viewModel: ChatListViewModel,
     onOpenChat: (chatId: String, title: String) -> Unit,
     onOpenThread: (ThreadDto) -> Unit,
+    onOpenArchivedThread: (ThreadDto) -> Unit,
+    onOpenInvite: () -> Unit,
 ) {
     val settings = LocalAppSettings.current
     var tabIndex by rememberSaveable { mutableIntStateOf(0) }
+    var showArchived by rememberSaveable { mutableStateOf(false) }
     val tabs = buildList {
         if (settings.showAllTab) add(ChatTab.ALL)
         add(ChatTab.GROUP)
@@ -252,6 +345,8 @@ fun ChatListScreen(
     val tab = tabs[safeIndex]
     val chats by viewModel.chats.collectAsState()
     val threads by viewModel.threads.collectAsState()
+    val archivedChats by viewModel.archivedChats.collectAsState()
+    val archivedThreads by viewModel.archivedThreads.collectAsState()
     val loading by viewModel.loading.collectAsState()
     val error by viewModel.error.collectAsState()
     val errorText = error
@@ -287,8 +382,11 @@ fun ChatListScreen(
                             modifier = Modifier.padding(end = 4.dp),
                         )
                     }
-                    IconButton(onClick = { refresh() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.refresh))
+                    IconButton(onClick = onOpenInvite) {
+                        Icon(
+                            Icons.Filled.Add,
+                            contentDescription = stringResource(R.string.invite_join_group),
+                        )
                     }
                 },
             )
@@ -309,57 +407,89 @@ fun ChatListScreen(
                 ChatTab.GROUP -> chats.isEmpty()
                 ChatTab.THREADS -> threads.isEmpty()
             }
-            if (loading && currentEmpty) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            } else if (!errorText.isNullOrBlank() && currentEmpty) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(
-                        text = errorText,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    TextButton(onClick = { refresh() }) {
-                        Text(stringResource(R.string.retry))
-                    }
-                }
-            } else {
-                when (tab) {
-                    ChatTab.ALL -> AllTabList(
-                        chats = chats,
-                        threads = threads,
-                        onOpenChat = onOpenChat,
-                        onOpenThread = onOpenThread,
-                    )
-                    ChatTab.GROUP -> {
-                        if (chats.isEmpty()) {
-                            EmptyState(stringResource(R.string.empty_chats), modifier = Modifier.fillMaxSize())
-                        } else {
-                            LazyColumn {
-                                items(chats, key = { it.id }) { chat ->
-                                    val title = chat.name ?: stringResource(R.string.tab_group)
-                                    ChatItem(
-                                        chat = chat,
-                                        onClick = { onOpenChat(chat.id, title) },
-                                    )
-                                    HorizontalDivider()
+            PullToRefreshBox(
+                isRefreshing = loading && !currentEmpty,
+                onRefresh = { refresh() },
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    if (loading && currentEmpty) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                    } else if (!errorText.isNullOrBlank() && currentEmpty) {
+                        PullRefreshableCenteredContent {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = errorText,
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                TextButton(onClick = { refresh() }) {
+                                    Text(stringResource(R.string.retry))
                                 }
                             }
                         }
-                    }
-                    ChatTab.THREADS -> {
-                        if (threads.isEmpty()) {
-                            EmptyState(stringResource(R.string.empty_threads), modifier = Modifier.fillMaxSize())
-                        } else {
-                            LazyColumn {
-                                items(threads, key = { "${it.chatId}:${it.threadRootMessage?.id}" }) { thread ->
-                                    ThreadItem(thread = thread, onClick = { onOpenThread(thread) })
-                                    HorizontalDivider()
+                    } else {
+                        when (tab) {
+                            ChatTab.ALL -> AllTabList(
+                                chats = chats,
+                                threads = threads,
+                                onOpenChat = onOpenChat,
+                                onOpenThread = onOpenThread,
+                            )
+                            ChatTab.GROUP -> {
+                                if (chats.isEmpty()) {
+                                    PullRefreshableCenteredContent {
+                                        EmptyState(stringResource(R.string.empty_chats))
+                                    }
+                                } else {
+                                    LazyColumn {
+                                        items(chats, key = { it.id }) { chat ->
+                                            val title = chat.name ?: stringResource(R.string.tab_group)
+                                            ChatItem(
+                                                chat = chat,
+                                                onClick = { onOpenChat(chat.id, title) },
+                                            )
+                                            HorizontalDivider()
+                                        }
+                                    }
+                                }
+                            }
+                            ChatTab.THREADS -> {
+                                if (showArchived) {
+                                    ArchivedList(
+                                        archivedChats = archivedChats,
+                                        archivedThreads = archivedThreads,
+                                        onBack = { showArchived = false },
+                                        onOpenChat = onOpenChat,
+                                        onOpenThread = onOpenArchivedThread,
+                                    )
+                                } else {
+                                    LazyColumn {
+                                        if (archivedChats.isNotEmpty() || archivedThreads.isNotEmpty()) {
+                                            item(key = "archived_entry") {
+                                                ArchivedEntry(onClick = { showArchived = true })
+                                            }
+                                        }
+                                        if (threads.isEmpty()) {
+                                            item(key = "threads_empty") {
+                                                Box(
+                                                    modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                                                    contentAlignment = Alignment.Center,
+                                                ) {
+                                                    Text(
+                                                        text = stringResource(R.string.empty_threads),
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        items(threads, key = { "${it.chatId}:${it.threadRootMessage?.id}" }) { thread ->
+                                            ThreadItem(thread = thread, onClick = { onOpenThread(thread) })
+                                            HorizontalDivider()
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -378,7 +508,9 @@ private fun AllTabList(
     onOpenThread: (ThreadDto) -> Unit,
 ) {
     if (chats.isEmpty() && threads.isEmpty()) {
-        EmptyState(stringResource(R.string.empty_all), modifier = Modifier.fillMaxSize())
+        PullRefreshableCenteredContent {
+            EmptyState(stringResource(R.string.empty_all))
+        }
         return
     }
     LazyColumn {
@@ -401,6 +533,18 @@ private fun AllTabList(
                 HorizontalDivider()
             }
         }
+    }
+}
+
+@Composable
+private fun PullRefreshableCenteredContent(content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
     }
 }
 
@@ -505,6 +649,105 @@ private fun ThreadItem(thread: ThreadDto, onClick: () -> Unit) {
             if (thread.unreadCount > 0) {
                 Badge {
                     Text(thread.unreadCount.toString())
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArchivedEntry(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Filled.Archive,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.archived_entry_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = stringResource(R.string.archived_entry_subtitle),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ArchivedList(
+    archivedChats: List<ChatDto>,
+    archivedThreads: List<ThreadDto>,
+    onBack: () -> Unit,
+    onOpenChat: (chatId: String, title: String) -> Unit,
+    onOpenThread: (ThreadDto) -> Unit,
+) {
+    LazyColumn {
+        item(key = "archived_back") {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onBack)
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.settings_back),
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = stringResource(R.string.archived_back),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            HorizontalDivider()
+        }
+        if (archivedChats.isEmpty() && archivedThreads.isEmpty()) {
+            item(key = "archived_empty") {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = stringResource(R.string.archived_empty),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        } else {
+            if (archivedChats.isNotEmpty()) {
+                item(key = "archived_chats_header") {
+                    SectionHeader(text = stringResource(R.string.tab_group))
+                }
+                items(archivedChats, key = { "archived_chat:${it.id}" }) { chat ->
+                    val title = chat.name ?: stringResource(R.string.tab_group)
+                    ChatItem(chat = chat, onClick = { onOpenChat(chat.id, title) })
+                    HorizontalDivider()
+                }
+            }
+            if (archivedThreads.isNotEmpty()) {
+                item(key = "archived_threads_header") {
+                    SectionHeader(text = stringResource(R.string.tab_threads))
+                }
+                items(
+                    archivedThreads,
+                    key = { "archived_thread:${it.chatId}:${it.threadRootMessage?.id}" },
+                ) { thread ->
+                    ThreadItem(thread = thread, onClick = { onOpenThread(thread) })
+                    HorizontalDivider()
                 }
             }
         }

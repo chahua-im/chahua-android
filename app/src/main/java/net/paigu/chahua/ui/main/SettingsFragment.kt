@@ -105,6 +105,7 @@ import net.paigu.chahua.BuildConfig
 import net.paigu.chahua.R
 import net.paigu.chahua.data.AppLanguage
 import net.paigu.chahua.data.FontSizeOption
+import net.paigu.chahua.data.LogLevelOption
 import net.paigu.chahua.data.SessionManager
 import net.paigu.chahua.data.ThemeColorOption
 import net.paigu.chahua.data.models.StickerPackSummaryDto
@@ -114,6 +115,7 @@ import net.paigu.chahua.ui.common.AuthAsyncImage
 import net.paigu.chahua.ui.common.EmptyState
 import net.paigu.chahua.ui.common.UserAvatar
 import net.paigu.chahua.ui.theme.ChahuaTheme
+import java.text.BreakIterator
 import java.util.Locale
 
 class SettingsFragment : Fragment() {
@@ -245,10 +247,12 @@ private fun SettingsScreen(
         SettingsPage.GENERAL -> GeneralScreen(
             currentLanguage = AppLanguage.from(settings.language),
             enterToSend = settings.enterToSend,
+            showAvatarsInMessages = settings.showAvatarsInMessages,
             onBack = { navigate(SettingsPage.HOME) },
             onOpenLanguage = { navigate(SettingsPage.LANGUAGE) },
             onOpenCache = { navigate(SettingsPage.CACHE) },
             onEnterToSendChange = viewModel::setEnterToSend,
+            onShowAvatarsInMessagesChange = viewModel::setShowAvatarsInMessages,
         )
         SettingsPage.CACHE -> CacheScreen(
             viewModel = viewModel,
@@ -272,6 +276,8 @@ private fun SettingsScreen(
         )
         SettingsPage.STICKERS -> StickerPacksScreen(
             stickersViewModel = stickersViewModel,
+            pinnedReactions = settings.pinnedReactions,
+            onPinnedReactionsChange = viewModel::setPinnedReactions,
             onBack = { navigate(SettingsPage.HOME) },
             onOpenPack = { packId ->
                 selectedPackId = packId
@@ -497,10 +503,12 @@ private fun SettingsEntryRow(
 private fun GeneralScreen(
     currentLanguage: AppLanguage,
     enterToSend: Boolean,
+    showAvatarsInMessages: Boolean,
     onBack: () -> Unit,
     onOpenLanguage: () -> Unit,
     onOpenCache: () -> Unit,
     onEnterToSendChange: (Boolean) -> Unit,
+    onShowAvatarsInMessagesChange: (Boolean) -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -555,6 +563,33 @@ private fun GeneralScreen(
                     Switch(
                         checked = enterToSend,
                         onCheckedChange = onEnterToSendChange,
+                    )
+                }
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onShowAvatarsInMessagesChange(!showAvatarsInMessages) }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.settings_show_avatars_in_messages),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_show_avatars_in_messages_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Switch(
+                        checked = showAvatarsInMessages,
+                        onCheckedChange = onShowAvatarsInMessagesChange,
                     )
                 }
             }
@@ -941,6 +976,8 @@ private fun themeSwatchColor(option: ThemeColorOption): Color = when (option) {
 @Composable
 private fun StickerPacksScreen(
     stickersViewModel: StickersViewModel,
+    pinnedReactions: List<String>,
+    onPinnedReactionsChange: (List<String>) -> Unit,
     onBack: () -> Unit,
     onOpenPack: (String) -> Unit,
 ) {
@@ -979,42 +1016,48 @@ private fun StickerPacksScreen(
             )
         },
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            when {
-                packsState.loading && packsState.packs.isEmpty() -> {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                }
-                packsState.error != null && packsState.packs.isEmpty() -> {
-                    Column(
-                        modifier = Modifier.align(Alignment.Center),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            text = packsState.error.orEmpty(),
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                        TextButton(onClick = { stickersViewModel.loadPacks() }) {
-                            Text(stringResource(R.string.retry))
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            PinnedReactionsCard(
+                pinnedReactions = pinnedReactions,
+                onPinnedReactionsChange = onPinnedReactionsChange,
+            )
+            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                when {
+                    packsState.loading && packsState.packs.isEmpty() -> {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    }
+                    packsState.error != null && packsState.packs.isEmpty() -> {
+                        Column(
+                            modifier = Modifier.align(Alignment.Center),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                text = packsState.error.orEmpty(),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            TextButton(onClick = { stickersViewModel.loadPacks() }) {
+                                Text(stringResource(R.string.retry))
+                            }
                         }
                     }
-                }
-                packsState.packs.isEmpty() -> {
-                    Text(
-                        text = stringResource(R.string.settings_packs_empty),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
-                else -> {
-                    LazyColumn {
-                        items(packsState.packs, key = { it.id }) { pack ->
-                            StickerPackRow(
-                                pack = pack,
-                                owned = pack.id in packsState.ownedIds,
-                                onClick = { onOpenPack(pack.id) },
-                            )
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    packsState.packs.isEmpty() -> {
+                        Text(
+                            text = stringResource(R.string.settings_packs_empty),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
+                    else -> {
+                        LazyColumn {
+                            items(packsState.packs, key = { it.id }) { pack ->
+                                StickerPackRow(
+                                    pack = pack,
+                                    owned = pack.id in packsState.ownedIds,
+                                    onClick = { onOpenPack(pack.id) },
+                                )
+                                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                            }
                         }
                     }
                 }
@@ -1034,6 +1077,71 @@ private fun StickerPacksScreen(
             },
         )
     }
+}
+
+@Composable
+private fun PinnedReactionsCard(
+    pinnedReactions: List<String>,
+    onPinnedReactionsChange: (List<String>) -> Unit,
+) {
+    var text by remember { mutableStateOf(pinnedReactions.joinToString("")) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(R.string.settings_pinned_reactions),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "(${pinnedReactions.size}/5)",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            OutlinedTextField(
+                value = text,
+                onValueChange = { input ->
+                    text = input
+                    val normalized = extractEmojis(input)
+                    if (normalized != pinnedReactions) {
+                        onPinnedReactionsChange(normalized)
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                placeholder = { Text(stringResource(R.string.settings_pinned_reactions_hint)) },
+                singleLine = true,
+            )
+        }
+    }
+}
+
+/** 按 Unicode 字符簇拆分文本并去重、限量，用于从输入框中提取表情。 */
+private fun extractEmojis(text: String): List<String> {
+    val iterator = BreakIterator.getCharacterInstance(Locale.ROOT)
+    iterator.setText(text)
+    val result = mutableListOf<String>()
+    var start = iterator.first()
+    var end = iterator.next()
+    while (end != BreakIterator.DONE) {
+        val cluster = text.substring(start, end)
+        val looksLikeEmoji = cluster.any { it.code > 0x2FFF }
+        if (looksLikeEmoji && cluster !in result) {
+            result.add(cluster)
+            if (result.size >= 5) break
+        }
+        start = end
+        end = iterator.next()
+    }
+    return result
 }
 
 @Composable
@@ -1242,9 +1350,7 @@ private fun StickerPackDetailScreen(
                                 url = sticker.media.url,
                                 contentDescription = sticker.emoji,
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(100.dp)
-                                    .clip(RoundedCornerShape(12.dp)),
+                                    .size(72.dp),
                                 contentScale = ContentScale.Fit,
                             )
                         }
@@ -1490,6 +1596,7 @@ private fun DeveloperScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     var showAddServer by rememberSaveable { mutableStateOf(false) }
+    var showLogLevelDialog by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(uiState.message) {
         uiState.message?.let {
@@ -1612,6 +1719,35 @@ private fun DeveloperScreen(
                     checked = settings.showLatency,
                     onCheckedChange = viewModel::setShowLatency,
                 )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showLogLevelDialog = true }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.settings_log_level),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            text = stringResource(
+                                LogLevelOption.from(settings.logLevel).displayNameRes,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -1657,6 +1793,17 @@ private fun DeveloperScreen(
             },
         )
     }
+
+    if (showLogLevelDialog) {
+        LogLevelDialog(
+            currentKey = settings.logLevel,
+            onSelect = { key ->
+                viewModel.setLogLevel(key)
+                showLogLevelDialog = false
+            },
+            onDismiss = { showLogLevelDialog = false },
+        )
+    }
 }
 
 @Composable
@@ -1692,6 +1839,43 @@ private fun DeveloperSwitchRow(
             onCheckedChange = onCheckedChange,
         )
     }
+}
+
+@Composable
+private fun LogLevelDialog(
+    currentKey: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_log_level)) },
+        text = {
+            Column {
+                LogLevelOption.entries.forEach { option ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(option.key) }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = option.key == currentKey,
+                            onClick = { onSelect(option.key) },
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(option.displayNameRes))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.settings_cancel))
+            }
+        },
+    )
 }
 
 @Composable

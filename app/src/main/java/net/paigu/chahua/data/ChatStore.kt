@@ -155,7 +155,23 @@ class ChatStore {
         _messages.update { current ->
             current.mapValues { (key, list) ->
                 if (key == chatId || key.startsWith("$chatId:")) {
-                    list.map { m -> if (m.id == messageId) m.copy(reactions = reactions) else m }
+                    list.map { m ->
+                        if (m.id == messageId) {
+                            // 广播的 reactedByMe 为 null，保留本地已知的“我是否点过”状态，
+                            // 否则高亮会消失、再次点击会变成重复添加而不是取消。
+                            val merged = reactions.map { incoming ->
+                                val previous = m.reactions.firstOrNull { it.emoji == incoming.emoji }
+                                if (incoming.reactedByMe == null && previous?.reactedByMe != null) {
+                                    incoming.copy(reactedByMe = previous.reactedByMe)
+                                } else {
+                                    incoming
+                                }
+                            }
+                            m.copy(reactions = merged)
+                        } else {
+                            m
+                        }
+                    }
                 } else list
             }
         }
@@ -177,6 +193,31 @@ class ChatStore {
     fun onChatArchiveState(chatId: String, archived: Boolean) {
         _chats.update { chats ->
             chats.map { if (it.id == chatId) it.copy(archived = archived) else it }
+        }
+    }
+
+    /** 更新会话免打扰状态（群组信息页静音/取消静音后调用）。*/
+    fun setChatMuted(chatId: String, mutedUntil: String?) {
+        _chats.update { chats ->
+            chats.map { if (it.id == chatId) it.copy(mutedUntil = mutedUntil) else it }
+        }
+    }
+
+    /** 退出群组后从本地列表中移除该会话及其消息。*/
+    fun removeChat(chatId: String) {
+        _chats.update { chats -> chats.filterNot { it.id == chatId } }
+        _threads.update { threads -> threads.filterNot { it.chatId == chatId } }
+        _messages.update { messages ->
+            messages.filterKeys { key -> key == chatId || key.startsWith("$chatId:") }
+        }
+    }
+
+    /** 归档话题后从活跃话题列表移除。*/
+    fun removeThread(chatId: String, threadRootId: String) {
+        _threads.update { threads ->
+            threads.filterNot {
+                it.chatId == chatId && it.threadRootMessage?.id == threadRootId
+            }
         }
     }
 

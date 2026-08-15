@@ -3,7 +3,7 @@ package net.paigu.chahua.data.models
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
-/** 用户信息（消息发送者 / 线程参与者等）。 */
+/** 用户信息（消息发送者 / 话题参与者等）。 */
 @Serializable
 data class UserDto(
     val uid: Int,
@@ -38,6 +38,51 @@ data class AuthTokenResponse(val token: String)
 @Serializable
 data class TicketResponse(val ticket: String)
 
+/** 邀请码对应的群聊信息。 */
+@Serializable
+data class InviteGroupDto(
+    val id: String,
+    val name: String = "",
+    val description: String? = null,
+    val avatar: String? = null,
+    val visibility: String = "private",
+    val createdAt: String? = null,
+    val mutedUntil: String? = null,
+    val myRole: String? = null,
+)
+
+@Serializable
+data class InviteResponse(
+    val id: String,
+    val code: String,
+    val chatId: String,
+    val inviteType: String = "generic",
+    val creatorUid: Int? = null,
+    val targetUid: Int? = null,
+    val requiredChatId: String? = null,
+    val createdAt: String? = null,
+    val expiresAt: String? = null,
+    val revokedAt: String? = null,
+    val usedAt: String? = null,
+)
+
+@Serializable
+data class InvitePreviewResponse(
+    val invite: InviteResponse,
+    val chat: InviteGroupDto,
+    val alreadyMember: Boolean = false,
+)
+
+@Serializable
+data class RedeemInviteResponse(
+    val chat: InviteGroupDto,
+)
+
+@Serializable
+data class RedeemInviteBody(
+    val code: String,
+)
+
 @Serializable
 data class StickerPackOrderItemDto(
     val stickerPackId: String,
@@ -64,7 +109,7 @@ data class ListChatsResponse(
     val nextCursor: String? = null,
 )
 
-/** 话题（线程）列表项，对应 ThreadListItem。 */
+/** 话题列表项，对应 ThreadListItem。 */
 @Serializable
 data class ThreadDto(
     val chatId: String,
@@ -217,6 +262,11 @@ data class StickerPackListResponse(
 )
 
 @Serializable
+data class FavoriteStickerListResponse(
+    val stickers: List<StickerSummaryDto> = emptyList(),
+)
+
+@Serializable
 data class StickerPackDetailResponse(
     val id: String,
     val ownerUid: Int = 0,
@@ -249,10 +299,30 @@ data class AttachmentDto(
 )
 
 @Serializable
+data class ReactionReactorDto(
+    val uid: Int,
+    val name: String? = null,
+    val avatarUrl: String? = null,
+    val sortIndex: Int? = null,
+)
+
+@Serializable
 data class ReactionDto(
     val emoji: String,
     val count: Long = 0,
     val reactedByMe: Boolean? = null,
+    val reactors: List<ReactionReactorDto>? = null,
+)
+
+@Serializable
+data class ReactionGroupDto(
+    val emoji: String,
+    val reactors: List<ReactionReactorDto> = emptyList(),
+)
+
+@Serializable
+data class ReactionDetailResponse(
+    val reactions: List<ReactionGroupDto> = emptyList(),
 )
 
 @Serializable
@@ -299,6 +369,121 @@ data class GroupSelectorItem(
 @Serializable
 data class ListGroupsResponse(
     val groups: List<GroupSelectorItem> = emptyList(),
+    val nextCursor: String? = null,
+)
+
+@Serializable
+data class GroupInfoDto(
+    val id: String,
+    val name: String = "",
+    val description: String? = null,
+    val avatarImageId: String? = null,
+    val avatar: String? = null,
+    val visibility: String = "private",
+    val createdAt: String? = null,
+    val mutedUntil: String? = null,
+    val myRole: String? = null,
+)
+
+@Serializable
+data class MuteBody(
+    val durationSeconds: Long? = null,
+)
+
+@Serializable
+data class MuteResponse(
+    val mutedUntil: String? = null,
+)
+
+@Serializable
+data class MemberDto(
+    val uid: Int,
+    val username: String? = null,
+    val avatarUrl: String? = null,
+    val role: String? = null,
+    val joinedAt: String? = null,
+    val gender: Int = 0,
+)
+
+@Serializable
+data class ListMembersResponse(
+    val members: List<MemberDto> = emptyList(),
+    val nextCursor: Int? = null,
+    val canManageMembers: Boolean = false,
+)
+
+@Serializable
+data class ChatAttachmentDto(
+    val id: String,
+    val messageId: String = "",
+    val messageCreatedAt: String? = null,
+    val sender: UserDto? = null,
+    val url: String = "",
+    val kind: String = "other",
+    val size: Long = 0,
+    val fileName: String = "",
+    val width: Int? = null,
+    val height: Int? = null,
+    val order: Int = 0,
+)
+
+@Serializable
+data class ListChatAttachmentsResponse(
+    val attachments: List<ChatAttachmentDto> = emptyList(),
+    val olderCursor: String? = null,
+    val newerCursor: String? = null,
+)
+
+@Serializable
+data class SavedAttachmentSnapshotDto(
+    val id: String,
+    val url: String = "",
+    val kind: String = "other",
+    val size: Long = 0,
+    val fileName: String = "",
+    val width: Int? = null,
+    val height: Int? = null,
+    val order: Int = 0,
+)
+
+@Serializable
+data class SavedSenderSnapshotDto(
+    val uid: Int = 0,
+    val name: String? = null,
+    val avatarUrl: String? = null,
+    val gender: Int = 0,
+)
+
+@Serializable
+data class SavedChatSnapshotDto(
+    val id: String = "",
+    val name: String = "",
+    val avatarUrl: String? = null,
+)
+
+@Serializable
+data class SavedMessageDto(
+    val id: String,
+    val originalChatId: String = "",
+    val originalThreadRootId: String? = null,
+    val originalMessageId: String = "",
+    val originalReplyToMessageId: String? = null,
+    val originalSenderUid: Int = 0,
+    val originalCreatedAt: String? = null,
+    val savedAt: String? = null,
+    val message: String? = null,
+    val messageType: String = "text",
+    val attachments: List<SavedAttachmentSnapshotDto> = emptyList(),
+    val sticker: MessagePreviewStickerDto? = null,
+    val mentions: List<MentionDto> = emptyList(),
+    val sender: SavedSenderSnapshotDto? = null,
+    val chat: SavedChatSnapshotDto? = null,
+    val canLocateContext: Boolean = false,
+)
+
+@Serializable
+data class ListSavedMessagesResponse(
+    val savedMessages: List<SavedMessageDto> = emptyList(),
     val nextCursor: String? = null,
 )
 

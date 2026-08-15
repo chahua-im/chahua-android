@@ -9,6 +9,9 @@ import android.view.View
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
@@ -40,6 +43,24 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_main)
+
+        // 全局底栏可见时，Fragment 内容区不会延伸到系统导航栏后面；
+        // 去掉 navigationBars 的底部 inset，避免 Scaffold 再次给内容加 padding。
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.fragment_container)) { _, insets ->
+            val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+            val bottomBarVisible =
+                findViewById<View>(R.id.main_bottom_bar).visibility == View.VISIBLE
+            if (nav.bottom > 0 && bottomBarVisible) {
+                WindowInsetsCompat.Builder(insets)
+                    .setInsets(
+                        WindowInsetsCompat.Type.navigationBars(),
+                        Insets.of(nav.left, nav.top, nav.right, 0),
+                    )
+                    .build()
+            } else {
+                insets
+            }
+        }
 
         if (savedInstanceState != null) {
             selectedTab = savedInstanceState.getInt(KEY_SELECTED_TAB, 0)

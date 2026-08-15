@@ -18,6 +18,12 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     val threads = store.threads
     val latencyMs = AppGraph.engine.latencyMs
 
+    private val _archivedChats = MutableStateFlow<List<net.paigu.chahua.data.models.ChatDto>>(emptyList())
+    val archivedChats: StateFlow<List<net.paigu.chahua.data.models.ChatDto>> = _archivedChats.asStateFlow()
+
+    private val _archivedThreads = MutableStateFlow<List<net.paigu.chahua.data.models.ThreadDto>>(emptyList())
+    val archivedThreads: StateFlow<List<net.paigu.chahua.data.models.ThreadDto>> = _archivedThreads.asStateFlow()
+
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
 
@@ -32,6 +38,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                 .onFailure { _error.value = it.message }
             _loading.value = false
         }
+        loadArchived()
     }
 
     fun loadThreads() {
@@ -42,6 +49,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                 .onFailure { _error.value = it.message }
             _loading.value = false
         }
+        loadArchived()
     }
 
     /** “全部”标签：同时加载群组与话题，群组在前、话题在后展示。 */
@@ -57,6 +65,19 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                 .onSuccess { _error.value = null }
                 .onFailure { _error.value = it.message }
             _loading.value = false
+        }
+        loadArchived()
+    }
+
+    /** 拉取已归档的群聊与话题，用于话题列表顶部的“已归档”入口。*/
+    fun loadArchived() {
+        viewModelScope.launch {
+            runCatching {
+                val chatsResp = api.chats(limit = 100, archived = true)
+                val threadsResp = api.threads(limit = 100, archived = true)
+                _archivedChats.value = chatsResp.chats
+                _archivedThreads.value = threadsResp.threads
+            }
         }
     }
 }

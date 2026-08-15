@@ -1,6 +1,7 @@
 package net.paigu.chahua.ui.common
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -18,6 +19,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import net.paigu.chahua.core.AppGraph
+import net.paigu.chahua.data.models.MentionDto
 import net.paigu.chahua.data.models.MessagePreviewDto
 import net.paigu.chahua.R
 import java.time.Instant
@@ -51,6 +53,7 @@ fun UserAvatar(
     modifier: Modifier = Modifier,
     size: Dp = 40.dp,
     showBackground: Boolean = true,
+    onClick: (() -> Unit)? = null,
 ) {
     Box(
         modifier = modifier
@@ -62,7 +65,8 @@ fun UserAvatar(
                 } else {
                     Modifier
                 },
-            ),
+            )
+            .clickable(enabled = onClick != null, onClick = { onClick?.invoke() }),
         contentAlignment = Alignment.Center,
     ) {
         if (!url.isNullOrBlank()) {
@@ -145,4 +149,22 @@ fun messagePreviewWithSender(
     val sender = preview.sender?.name?.takeIf { it.isNotBlank() } ?: unknownSender
     val text = messagePreviewText(preview.message, preview.messageType)
     return stringResource(R.string.message_sender_format, sender, text)
+}
+
+private val mentionTokenRegex = Regex("@\\[uid:(\\d+)\\]")
+
+/** 把消息文本中的 @[uid:N] 替换为 @用户名。*/
+fun renderMentionsAsText(
+    text: String?,
+    mentions: List<MentionDto>,
+): String {
+    if (text.isNullOrBlank()) return text.orEmpty()
+    val mentionMap = mentions.associate { it.uid to it.username }
+    return mentionTokenRegex.replace(text) { match ->
+        val uid = match.groupValues.getOrNull(1)?.toIntOrNull()
+        val name = uid?.let { mentionMap[it] }?.takeIf { it.isNotBlank() }
+            ?: uid?.let { "User $it" }
+            ?: match.value
+        "@$name"
+    }
 }

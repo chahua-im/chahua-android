@@ -10,13 +10,16 @@ import net.paigu.chahua.R
 import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
+import java.io.InputStream
 import java.util.concurrent.TimeUnit
 
 /** 全局 JSON 配置：后端字段为 camelCase、可能多出/缺少字段，均做容错处理。 */
@@ -134,6 +137,44 @@ class ApiClient(
     }
 
     /** multipart 上传：用于贴纸等文件字段 + 文本字段。 */
+    /** 流式上传（用于视频/大文件），避免把整个文件读入内存。 */
+    suspend fun uploadStream(
+        uploadUrl: String,
+        headers: Map<String, String>,
+        content: () -> InputStream,
+        contentType: String,
+        contentLength: Long?,
+    ) {
+        val body = object : RequestBody() {
+            override fun contentType(): MediaType? = contentType.toMediaType()
+
+            override fun contentLength(): Long = contentLength ?: -1L
+
+            override fun writeTo(sink: okio.BufferedSink) {
+                val input = content()
+                try {
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        sink.write(buffer, 0, read)
+                    }
+                } finally {
+                    input.close()
+                }
+            }
+        }
+        val builder = Request.Builder().url(uploadUrl).put(body)
+        headers.forEach { (k, v) -> builder.header(k, v) }
+        val call = okHttpClient.newCall(builder.build())
+        val response = withContextIO { call.execute() }
+        response.use { r ->
+            if (!r.isSuccessful) {
+                throw ApiException(r.code, "上传失败: ${r.body?.string() ?: r.message}")
+            }
+        }
+    }
+
     suspend fun uploadMultipart(
         path: String,
         textFields: Map<String, String>,
@@ -202,6 +243,8 @@ class ApiClient(
                 }
             }
             builder.method(method, jsonText.toRequestBody(jsonMedia))
+        } else if (method == "PUT") {
+            builder.method(method, "".toRequestBody(null))
         } else {
             builder.method(method, null)
         }

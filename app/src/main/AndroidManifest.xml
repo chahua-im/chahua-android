@@ -71,10 +71,35 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name=".ui.invite.InviteRedeemActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:resizeableActivity="true"
+            android:theme="@style/Theme.HelloWorldChahua"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".ui.media.MediaViewerActivity"
             android:exported="false"
             android:label="@string/app_name"
             android:theme="@style/Theme.HelloWorldChahua" />
+
+        <activity
+            android:name=".ui.group.GroupInfoActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:resizeableActivity="true"
+            android:theme="@style/Theme.HelloWorldChahua" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <service
             android:name=".service.ChatMessagingService"

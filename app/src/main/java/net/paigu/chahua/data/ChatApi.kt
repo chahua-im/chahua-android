@@ -1,15 +1,27 @@
 package net.paigu.chahua.data
 
+import java.io.InputStream
 import net.paigu.chahua.data.models.AuthTokenResponse
 import net.paigu.chahua.data.models.CreateStickerPackBody
 import net.paigu.chahua.data.models.CreateMessageBody
+import net.paigu.chahua.data.models.FavoriteStickerListResponse
+import net.paigu.chahua.data.models.GroupInfoDto
+import net.paigu.chahua.data.models.InvitePreviewResponse
+import net.paigu.chahua.data.models.ListChatAttachmentsResponse
 import net.paigu.chahua.data.models.ListChatsResponse
 import net.paigu.chahua.data.models.ListGroupsResponse
+import net.paigu.chahua.data.models.ListMembersResponse
 import net.paigu.chahua.data.models.ListMessagesResponse
+import net.paigu.chahua.data.models.ListSavedMessagesResponse
 import net.paigu.chahua.data.models.ListThreadsResponse
 import net.paigu.chahua.data.models.MarkReadResponse
 import net.paigu.chahua.data.models.MeResponse
 import net.paigu.chahua.data.models.MessageDto
+import net.paigu.chahua.data.models.MuteBody
+import net.paigu.chahua.data.models.MuteResponse
+import net.paigu.chahua.data.models.RedeemInviteBody
+import net.paigu.chahua.data.models.RedeemInviteResponse
+import net.paigu.chahua.data.models.ReactionDetailResponse
 import net.paigu.chahua.data.models.StickerPackDetailResponse
 import net.paigu.chahua.data.models.StickerPackListResponse
 import net.paigu.chahua.data.models.StickerPackSummaryDto
@@ -49,7 +61,7 @@ class ChatApi(
         else client.get<TicketResponse>("ws/ticket").ticket
     }
 
-    // ---- 聊天列表 / 线程列表 ----
+    // ---- 聊天列表 / 话题列表 ----
 
     suspend fun chats(limit: Int = 100, after: String? = null, archived: Boolean = false): ListChatsResponse =
         client.get(
@@ -77,6 +89,7 @@ class ChatApi(
         chatId: String,
         before: String? = null,
         after: String? = null,
+        around: String? = null,
         threadId: String? = null,
         max: Int = 100,
     ): ListMessagesResponse = client.get(
@@ -85,7 +98,27 @@ class ChatApi(
             put("max", max.toString())
             before?.let { put("before", it) }
             after?.let { put("after", it) }
+            around?.let { put("around", it) }
             threadId?.let { put("threadId", it) }
+        },
+    )
+
+    suspend fun message(chatId: String, messageId: String): MessageDto =
+        client.get("chats/$chatId/messages/$messageId")
+
+    suspend fun searchMessages(
+        chatId: String,
+        q: String,
+        limit: Int = 20,
+        offset: Int = 0,
+        sort: String = "relevance",
+    ): ListMessagesResponse = client.get(
+        "chats/$chatId/messages/search",
+        buildMap {
+            put("q", q)
+            put("limit", limit.toString())
+            put("offset", offset.toString())
+            put("sort", sort)
         },
     )
 
@@ -95,15 +128,20 @@ class ChatApi(
     suspend fun sendThreadReply(chatId: String, threadRootId: String, body: CreateMessageBody): MessageDto =
         client.post("chats/$chatId/threads/$threadRootId/messages", body = body)
 
-    suspend fun editMessage(chatId: String, messageId: String, newText: String): MessageDto =
-        client.patch(
-            "chats/$chatId/messages/$messageId",
-            body = EditMessageBody(message = newText),
-        )
-
     suspend fun deleteMessage(chatId: String, messageId: String) {
         client.noContent("DELETE", "chats/$chatId/messages/$messageId")
     }
+
+    suspend fun editMessage(
+        chatId: String,
+        messageId: String,
+        newText: String,
+        attachmentIds: List<String> = emptyList(),
+    ): MessageDto =
+        client.patch(
+            "chats/$chatId/messages/$messageId",
+            body = EditMessageBody(message = newText, attachmentIds = attachmentIds),
+        )
 
     // ---- 反应 ----
 
@@ -114,6 +152,9 @@ class ChatApi(
     suspend fun removeReaction(chatId: String, messageId: String, emoji: String) {
         client.noContent("DELETE", "chats/$chatId/messages/$messageId/reactions/$emoji")
     }
+
+    suspend fun reactionDetails(chatId: String, messageId: String): ReactionDetailResponse =
+        client.get("chats/$chatId/messages/$messageId/reactions")
 
     // ---- 已读 ----
 
@@ -132,6 +173,16 @@ class ChatApi(
         client.uploadBytes(uploadUrl, headers, bytes, contentType)
     }
 
+    suspend fun uploadStream(
+        uploadUrl: String,
+        headers: Map<String, String>,
+        content: () -> InputStream,
+        contentType: String,
+        contentLength: Long?,
+    ) {
+        client.uploadStream(uploadUrl, headers, content, contentType, contentLength)
+    }
+
     // ---- 群组 ----
 
     suspend fun groupSearch(q: String? = null, limit: Int = 50): ListGroupsResponse =
@@ -143,6 +194,88 @@ class ChatApi(
             },
         )
 
+    suspend fun groupInfo(chatId: String): GroupInfoDto =
+        client.get("group/$chatId")
+
+    suspend fun muteChat(chatId: String, durationSeconds: Long? = null): MuteResponse =
+        client.put("group/$chatId/mute", body = MuteBody(durationSeconds = durationSeconds))
+
+    suspend fun unmuteChat(chatId: String) {
+        client.noContent("DELETE", "group/$chatId/mute")
+    }
+
+    suspend fun members(
+        chatId: String,
+        limit: Int = 50,
+        after: Int? = null,
+        q: String? = null,
+    ): ListMembersResponse = client.get(
+        "group/$chatId/members",
+        buildMap {
+            put("limit", limit.toString())
+            after?.let { put("after", it.toString()) }
+            q?.takeIf { it.isNotBlank() }?.let { put("q", it) }
+        },
+    )
+
+    suspend fun leaveGroup(chatId: String, uid: Int) {
+        client.noContent("DELETE", "group/$chatId/members/$uid")
+    }
+
+    suspend fun archiveChat(chatId: String) {
+        client.noContent("PUT", "chats/$chatId/archive")
+    }
+
+    suspend fun unarchiveChat(chatId: String) {
+        client.noContent("DELETE", "chats/$chatId/archive")
+    }
+
+    suspend fun archiveThread(chatId: String, threadRootId: String) {
+        client.noContent("PUT", "chats/$chatId/threads/$threadRootId/archive")
+    }
+
+    suspend fun unarchiveThread(chatId: String, threadRootId: String) {
+        client.noContent("DELETE", "chats/$chatId/threads/$threadRootId/archive")
+    }
+
+    suspend fun chatAttachments(
+        chatId: String,
+        kind: String = "all",
+        limit: Int = 30,
+        before: String? = null,
+        after: String? = null,
+    ): ListChatAttachmentsResponse = client.get(
+        "chats/$chatId/attachments",
+        buildMap {
+            put("kind", kind)
+            put("limit", limit.toString())
+            before?.let { put("before", it) }
+            after?.let { put("after", it) }
+        },
+    )
+
+    suspend fun chatSavedMessages(
+        chatId: String,
+        limit: Int = 50,
+        before: String? = null,
+    ): ListSavedMessagesResponse = client.get(
+        "chats/$chatId/saved-messages",
+        buildMap {
+            put("limit", limit.toString())
+            before?.let { put("before", it) }
+        },
+    )
+
+    // ---- 邀请码 ----
+
+    /** 按邀请码查询群聊预览，用于加入前确认。 */
+    suspend fun invitePreview(code: String): InvitePreviewResponse =
+        client.get("invites/invite", buildMap { put("inviteCode", code.trim()) })
+
+    /** 兑换邀请码并加入群聊。 */
+    suspend fun redeemInvite(code: String): RedeemInviteResponse =
+        client.post("invites/redeem", body = RedeemInviteBody(code = code.trim()))
+
     // ---- 贴纸 / 表情包 ----
 
     suspend fun ownedStickerPacks(): StickerPackListResponse =
@@ -151,6 +284,10 @@ class ChatApi(
     /** 当前用户收藏（订阅）的贴纸包。 */
     suspend fun subscribedStickerPacks(): StickerPackListResponse =
         client.get("stickers/packs/mine/subscribed")
+
+    /** 我收藏的贴纸。 */
+    suspend fun favoriteStickers(): FavoriteStickerListResponse =
+        client.get("stickers/mine/favorites")
 
     suspend fun stickerPackDetail(packId: String): StickerPackDetailResponse =
         client.get("stickers/packs/$packId")
