@@ -9,6 +9,7 @@ import android.view.View
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.compose.runtime.getValue
@@ -43,12 +44,22 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         setContentView(R.layout.activity_main)
 
-        // 三键导航（1920x1080 / 440dpi 等）下，系统导航栏会遮住 XML 底部栏；
-        // 显式把底部 inset 作为 padding 交给底栏 ComposeView。
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main_bottom_bar)) { view, insets ->
-            val bottom = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
-            view.setPadding(0, 0, 0, bottom)
-            insets
+        // 全局底栏可见时，Fragment 内容区不会延伸到系统导航栏后面；
+        // 去掉 navigationBars 的底部 inset，避免 Scaffold 再次给内容加 padding。
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.fragment_container)) { _, insets ->
+            val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+            val bottomBarVisible =
+                findViewById<View>(R.id.main_bottom_bar).visibility == View.VISIBLE
+            if (nav.bottom > 0 && bottomBarVisible) {
+                WindowInsetsCompat.Builder(insets)
+                    .setInsets(
+                        WindowInsetsCompat.Type.navigationBars(),
+                        Insets.of(nav.left, nav.top, nav.right, 0),
+                    )
+                    .build()
+            } else {
+                insets
+            }
         }
 
         if (savedInstanceState != null) {

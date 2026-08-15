@@ -25,17 +25,23 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.paigu.chahua.data.models.MessageDto
 import net.paigu.chahua.data.models.ReactionDto
+import net.paigu.chahua.data.models.ReactionDetailResponse
 import net.paigu.chahua.data.models.StickerPackDetailResponse
 import net.paigu.chahua.data.models.StickerPackSummaryDto
 import net.paigu.chahua.data.models.StickerSummaryDto
 import net.paigu.chahua.data.models.UploadUrlRequest
 import net.paigu.chahua.data.models.UserDto
+import net.paigu.chahua.data.MAX_DISTINCT_REACTIONS_PER_MESSAGE
+import net.paigu.chahua.data.MAX_REACTIONS_PER_USER_PER_MESSAGE
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.R
 import java.io.File
@@ -121,6 +127,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val mentionCandidates: StateFlow<List<UserDto>> = _mentionCandidates.asStateFlow()
     val connectionState = store.connectionState
     val latencyMs = AppGraph.engine.latencyMs
+    val quickReactionEmojis: StateFlow<List<String>> = AppGraph.settings.settingsState
+        .map { it.quickReactionEmojis() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, AppGraph.settings.snapshot().quickReactionEmojis())
 
     private var initialized = false
     private var currentKey: String? = null
@@ -613,11 +622,34 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val chatId = _chatId.value ?: return
         val existing = message.reactions.firstOrNull { it.emoji == emoji }
         val add = existing?.reactedByMe != true
+
+        if (add) {
+            val myReactionCount = message.reactions.count { it.reactedByMe == true }
+            if (myReactionCount >= MAX_REACTIONS_PER_USER_PER_MESSAGE) {
+                _uiState.value = _uiState.value.copy(
+                    error = getString(R.string.chat_reaction_limit, MAX_REACTIONS_PER_USER_PER_MESSAGE),
+                )
+                return
+            }
+            if (existing == null && message.reactions.size >= MAX_DISTINCT_REACTIONS_PER_MESSAGE) {
+                _uiState.value = _uiState.value.copy(
+                    error = getString(R.string.chat_reaction_distinct_limit, MAX_DISTINCT_REACTIONS_PER_MESSAGE),
+                )
+                return
+            }
+            viewModelScope.launch { AppGraph.settings.addRecentReaction(emoji) }
+        }
+
         val newReactions = buildList {
             addAll(message.reactions)
             if (add) {
-                removeAll { it.emoji == emoji }
-                add(ReactionDto(emoji = emoji, count = 1, reactedByMe = true))
+                val index = indexOfFirst { it.emoji == emoji }
+                if (index >= 0) {
+                    val current = this[index]
+                    this[index] = current.copy(count = current.count + 1, reactedByMe = true)
+                } else {
+                    add(ReactionDto(emoji = emoji, count = 1, reactedByMe = true))
+                }
             } else {
                 val index = indexOfFirst { it.emoji == emoji }
                 if (index >= 0) {
@@ -628,7 +660,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
-        // 乐观更新，等待 WS reactionUpdated 或失败回滚
+        // 乐观更新：立即上屏，请求失败时静默回滚（等待 WS reactionUpdated 覆盖）
         store.onReactionUpdate(chatId, message.id, newReactions)
         viewModelScope.launch {
             runCatching {
@@ -636,9 +668,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 else api.removeReaction(chatId, message.id, emoji)
             }.onFailure {
                 store.onReactionUpdate(chatId, message.id, message.reactions)
-                _uiState.value = _uiState.value.copy(error = getString(R.string.chat_action_failed, it.message))
             }
         }
+    }
+
+    /** 拉取表态详情；失败时返回 null，由详情弹窗展示空态。 */
+    suspend fun reactionDetails(messageId: String): ReactionDetailResponse? {
+        val chatId = _chatId.value ?: return null
+        return runCatching { api.reactionDetails(chatId, messageId) }.getOrNull()
     }
 
     fun deleteMessage(message: MessageDto, onSuccess: (() -> Unit)? = null) {

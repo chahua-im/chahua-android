@@ -123,6 +123,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { AppGraph.settings.setShowAvatarsInMessages(enabled) }
     }
 
+    fun setPinnedReactions(reactions: List<String>) {
+        viewModelScope.launch { AppGraph.settings.setPinnedReactions(reactions) }
+    }
+
     fun setLogLevel(key: String) {
         viewModelScope.launch { AppGraph.settings.setLogLevel(key) }
     }

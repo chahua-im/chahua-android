@@ -113,7 +113,7 @@ class ChatEngine(
         }
     }
 
-    /** 发送文本消息（话题内回复时自动走线程回复端点）。 */
+    /** 发送文本消息（话题内回复时自动走话题回复端点）。 */
     suspend fun sendMessage(
         chatId: String,
         text: String?,

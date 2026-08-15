@@ -144,6 +144,8 @@
     <string name="settings_sticker_upload">Upload</string>
     <string name="settings_sticker_uploading">Uploading…</string>
     <string name="settings_sticker_uploaded">Sticker uploaded</string>
+    <string name="settings_pinned_reactions">Pinned Reaction Emojis</string>
+    <string name="settings_pinned_reactions_hint">Type up to 5 emojis to pin to the quick reaction bar</string>
     <string name="settings_unfavorite">Unfavorite</string>
     <string name="settings_unfavorite_confirm_title">Unfavorite sticker pack</string>
     <string name="settings_unfavorite_confirm">Remove this sticker pack from your favorites?</string>
@@ -201,6 +203,14 @@
     <string name="chat_reply_message">message</string>
     <string name="chat_play">Play</string>
     <string name="chat_react">React</string>
+    <string name="chat_reactions">Reactions</string>
+    <string name="chat_reaction_details_title">Reactions</string>
+    <string name="chat_reaction_all">All</string>
+    <string name="chat_reaction_more">More</string>
+    <string name="chat_reaction_pick_more">Choose an emoji</string>
+    <string name="chat_reaction_empty">No reactions yet</string>
+    <string name="chat_reaction_limit">You can only add up to %1$d reactions</string>
+    <string name="chat_reaction_distinct_limit">Cannot add more than %1$d different reactions</string>
     <string name="chat_copy">Copy</string>
     <string name="chat_edit">Edit</string>
     <string name="chat_thread">Thread</string>

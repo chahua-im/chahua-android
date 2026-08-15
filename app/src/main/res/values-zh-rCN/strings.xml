@@ -142,6 +142,8 @@
     <string name="settings_sticker_upload">上传</string>
     <string name="settings_sticker_uploading">上传中…</string>
     <string name="settings_sticker_uploaded">贴纸已上传</string>
+    <string name="settings_pinned_reactions">固定表态表情</string>
+    <string name="settings_pinned_reactions_hint">输入最多 5 个表情，固定到快捷表态栏</string>
     <string name="settings_unfavorite">取消收藏</string>
     <string name="settings_unfavorite_confirm_title">取消收藏</string>
     <string name="settings_unfavorite_confirm">确定要将该表情包从收藏中移除吗？</string>
@@ -199,6 +201,14 @@
     <string name="chat_reply_message">消息</string>
     <string name="chat_play">播放</string>
     <string name="chat_react">表情回应</string>
+    <string name="chat_reactions">表态详情</string>
+    <string name="chat_reaction_details_title">表态详情</string>
+    <string name="chat_reaction_all">全部</string>
+    <string name="chat_reaction_more">更多</string>
+    <string name="chat_reaction_pick_more">选择表情</string>
+    <string name="chat_reaction_empty">暂无表态</string>
+    <string name="chat_reaction_limit">每条消息最多添加 %1$d 个表态</string>
+    <string name="chat_reaction_distinct_limit">最多添加 %1$d 种不同的表态</string>
     <string name="chat_copy">复制</string>
     <string name="chat_edit">修改</string>
     <string name="chat_thread">话题</string>

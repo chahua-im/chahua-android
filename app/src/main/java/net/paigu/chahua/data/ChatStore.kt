@@ -155,7 +155,23 @@ class ChatStore {
         _messages.update { current ->
             current.mapValues { (key, list) ->
                 if (key == chatId || key.startsWith("$chatId:")) {
-                    list.map { m -> if (m.id == messageId) m.copy(reactions = reactions) else m }
+                    list.map { m ->
+                        if (m.id == messageId) {
+                            // 广播的 reactedByMe 为 null，保留本地已知的“我是否点过”状态，
+                            // 否则高亮会消失、再次点击会变成重复添加而不是取消。
+                            val merged = reactions.map { incoming ->
+                                val previous = m.reactions.firstOrNull { it.emoji == incoming.emoji }
+                                if (incoming.reactedByMe == null && previous?.reactedByMe != null) {
+                                    incoming.copy(reactedByMe = previous.reactedByMe)
+                                } else {
+                                    incoming
+                                }
+                            }
+                            m.copy(reactions = merged)
+                        } else {
+                            m
+                        }
+                    }
                 } else list
             }
         }

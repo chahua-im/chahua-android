@@ -3,7 +3,7 @@ package net.paigu.chahua.data.models
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
-/** 用户信息（消息发送者 / 线程参与者等）。 */
+/** 用户信息（消息发送者 / 话题参与者等）。 */
 @Serializable
 data class UserDto(
     val uid: Int,
@@ -109,7 +109,7 @@ data class ListChatsResponse(
     val nextCursor: String? = null,
 )
 
-/** 话题（线程）列表项，对应 ThreadListItem。 */
+/** 话题列表项，对应 ThreadListItem。 */
 @Serializable
 data class ThreadDto(
     val chatId: String,
@@ -299,10 +299,30 @@ data class AttachmentDto(
 )
 
 @Serializable
+data class ReactionReactorDto(
+    val uid: Int,
+    val name: String? = null,
+    val avatarUrl: String? = null,
+    val sortIndex: Int? = null,
+)
+
+@Serializable
 data class ReactionDto(
     val emoji: String,
     val count: Long = 0,
     val reactedByMe: Boolean? = null,
+    val reactors: List<ReactionReactorDto>? = null,
+)
+
+@Serializable
+data class ReactionGroupDto(
+    val emoji: String,
+    val reactors: List<ReactionReactorDto> = emptyList(),
+)
+
+@Serializable
+data class ReactionDetailResponse(
+    val reactions: List<ReactionGroupDto> = emptyList(),
 )
 
 @Serializable

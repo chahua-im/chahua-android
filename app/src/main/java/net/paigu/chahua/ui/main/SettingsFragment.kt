@@ -115,6 +115,7 @@ import net.paigu.chahua.ui.common.AuthAsyncImage
 import net.paigu.chahua.ui.common.EmptyState
 import net.paigu.chahua.ui.common.UserAvatar
 import net.paigu.chahua.ui.theme.ChahuaTheme
+import java.text.BreakIterator
 import java.util.Locale
 
 class SettingsFragment : Fragment() {
@@ -275,6 +276,8 @@ private fun SettingsScreen(
         )
         SettingsPage.STICKERS -> StickerPacksScreen(
             stickersViewModel = stickersViewModel,
+            pinnedReactions = settings.pinnedReactions,
+            onPinnedReactionsChange = viewModel::setPinnedReactions,
             onBack = { navigate(SettingsPage.HOME) },
             onOpenPack = { packId ->
                 selectedPackId = packId
@@ -973,6 +976,8 @@ private fun themeSwatchColor(option: ThemeColorOption): Color = when (option) {
 @Composable
 private fun StickerPacksScreen(
     stickersViewModel: StickersViewModel,
+    pinnedReactions: List<String>,
+    onPinnedReactionsChange: (List<String>) -> Unit,
     onBack: () -> Unit,
     onOpenPack: (String) -> Unit,
 ) {
@@ -1011,42 +1016,48 @@ private fun StickerPacksScreen(
             )
         },
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            when {
-                packsState.loading && packsState.packs.isEmpty() -> {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                }
-                packsState.error != null && packsState.packs.isEmpty() -> {
-                    Column(
-                        modifier = Modifier.align(Alignment.Center),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            text = packsState.error.orEmpty(),
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                        TextButton(onClick = { stickersViewModel.loadPacks() }) {
-                            Text(stringResource(R.string.retry))
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            PinnedReactionsCard(
+                pinnedReactions = pinnedReactions,
+                onPinnedReactionsChange = onPinnedReactionsChange,
+            )
+            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                when {
+                    packsState.loading && packsState.packs.isEmpty() -> {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    }
+                    packsState.error != null && packsState.packs.isEmpty() -> {
+                        Column(
+                            modifier = Modifier.align(Alignment.Center),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                text = packsState.error.orEmpty(),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            TextButton(onClick = { stickersViewModel.loadPacks() }) {
+                                Text(stringResource(R.string.retry))
+                            }
                         }
                     }
-                }
-                packsState.packs.isEmpty() -> {
-                    Text(
-                        text = stringResource(R.string.settings_packs_empty),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
-                else -> {
-                    LazyColumn {
-                        items(packsState.packs, key = { it.id }) { pack ->
-                            StickerPackRow(
-                                pack = pack,
-                                owned = pack.id in packsState.ownedIds,
-                                onClick = { onOpenPack(pack.id) },
-                            )
-                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    packsState.packs.isEmpty() -> {
+                        Text(
+                            text = stringResource(R.string.settings_packs_empty),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
+                    else -> {
+                        LazyColumn {
+                            items(packsState.packs, key = { it.id }) { pack ->
+                                StickerPackRow(
+                                    pack = pack,
+                                    owned = pack.id in packsState.ownedIds,
+                                    onClick = { onOpenPack(pack.id) },
+                                )
+                                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                            }
                         }
                     }
                 }
@@ -1066,6 +1077,71 @@ private fun StickerPacksScreen(
             },
         )
     }
+}
+
+@Composable
+private fun PinnedReactionsCard(
+    pinnedReactions: List<String>,
+    onPinnedReactionsChange: (List<String>) -> Unit,
+) {
+    var text by remember { mutableStateOf(pinnedReactions.joinToString("")) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(R.string.settings_pinned_reactions),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "(${pinnedReactions.size}/5)",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            OutlinedTextField(
+                value = text,
+                onValueChange = { input ->
+                    text = input
+                    val normalized = extractEmojis(input)
+                    if (normalized != pinnedReactions) {
+                        onPinnedReactionsChange(normalized)
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                placeholder = { Text(stringResource(R.string.settings_pinned_reactions_hint)) },
+                singleLine = true,
+            )
+        }
+    }
+}
+
+/** 按 Unicode 字符簇拆分文本并去重、限量，用于从输入框中提取表情。 */
+private fun extractEmojis(text: String): List<String> {
+    val iterator = BreakIterator.getCharacterInstance(Locale.ROOT)
+    iterator.setText(text)
+    val result = mutableListOf<String>()
+    var start = iterator.first()
+    var end = iterator.next()
+    while (end != BreakIterator.DONE) {
+        val cluster = text.substring(start, end)
+        val looksLikeEmoji = cluster.any { it.code > 0x2FFF }
+        if (looksLikeEmoji && cluster !in result) {
+            result.add(cluster)
+            if (result.size >= 5) break
+        }
+        start = end
+        end = iterator.next()
+    }
+    return result
 }
 
 @Composable

@@ -21,6 +21,7 @@ import net.paigu.chahua.data.models.MuteBody
 import net.paigu.chahua.data.models.MuteResponse
 import net.paigu.chahua.data.models.RedeemInviteBody
 import net.paigu.chahua.data.models.RedeemInviteResponse
+import net.paigu.chahua.data.models.ReactionDetailResponse
 import net.paigu.chahua.data.models.StickerPackDetailResponse
 import net.paigu.chahua.data.models.StickerPackListResponse
 import net.paigu.chahua.data.models.StickerPackSummaryDto
@@ -60,7 +61,7 @@ class ChatApi(
         else client.get<TicketResponse>("ws/ticket").ticket
     }
 
-    // ---- 聊天列表 / 线程列表 ----
+    // ---- 聊天列表 / 话题列表 ----
 
     suspend fun chats(limit: Int = 100, after: String? = null, archived: Boolean = false): ListChatsResponse =
         client.get(
@@ -151,6 +152,9 @@ class ChatApi(
     suspend fun removeReaction(chatId: String, messageId: String, emoji: String) {
         client.noContent("DELETE", "chats/$chatId/messages/$messageId/reactions/$emoji")
     }
+
+    suspend fun reactionDetails(chatId: String, messageId: String): ReactionDetailResponse =
+        client.get("chats/$chatId/messages/$messageId/reactions")
 
     // ---- 已读 ----
 

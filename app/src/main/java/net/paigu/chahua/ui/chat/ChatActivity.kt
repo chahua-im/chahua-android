@@ -71,15 +71,12 @@ import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -116,6 +113,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isShiftPressed
@@ -134,6 +133,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -160,6 +160,7 @@ import java.nio.ByteBuffer
 import java.time.Duration
 import java.time.Instant
 import java.util.Base64
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 class ChatActivity : ComponentActivity() {
@@ -289,6 +290,7 @@ internal fun ChatScreen(
     val messages by viewModel.messages.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
     val latencyMs by viewModel.latencyMs.collectAsState()
+    val quickReactions by viewModel.quickReactionEmojis.collectAsState()
     val context = LocalContext.current
     val me = viewModel.myUser()
     val appSettings = LocalAppSettings.current
@@ -307,6 +309,8 @@ internal fun ChatScreen(
     }
     var editingMessage by remember { mutableStateOf<MessageDto?>(null) }
     var profileUser by remember { mutableStateOf<UserDto?>(null) }
+    var reactionDetailsMessage by remember { mutableStateOf<MessageDto?>(null) }
+    var emojiPickerMessage by remember { mutableStateOf<MessageDto?>(null) }
     var draft by remember { mutableStateOf<DraftAttachment?>(null) }
     var showAttachMenu by remember { mutableStateOf(false) }
     var showEmojiPanel by remember { mutableStateOf(false) }
@@ -806,7 +810,19 @@ internal fun ChatScreen(
                                     draft = null
                                     showEmojiPanel = false
                                 },
-                                onReact = { viewModel.toggleReaction(item.message, "\u2764\uFE0F") },
+                                quickReactionEmojis = quickReactions,
+                                onQuickReact = { emoji ->
+                                    viewModel.toggleReaction(item.message, emoji)
+                                },
+                                onReactionToggle = { emoji ->
+                                    viewModel.toggleReaction(item.message, emoji)
+                                },
+                                onOpenReactionDetails = {
+                                    reactionDetailsMessage = item.message
+                                },
+                                onOpenEmojiPicker = {
+                                    emojiPickerMessage = item.message
+                                },
                                 onDelete = {
                                     restoreScrollKey = listState.layoutInfo.visibleItemsInfo
                                         .firstOrNull()
@@ -934,6 +950,25 @@ internal fun ChatScreen(
         UserProfileDialog(
             user = user,
             onDismiss = { profileUser = null },
+        )
+    }
+
+    reactionDetailsMessage?.let { message ->
+        ReactionDetailsSheet(
+            messageId = message.id,
+            loadDetails = { messageId -> viewModel.reactionDetails(messageId) },
+            onDismiss = { reactionDetailsMessage = null },
+            onAvatarClick = { profileUser = it },
+        )
+    }
+
+    emojiPickerMessage?.let { message ->
+        ReactionEmojiPickerSheet(
+            onSelect = { emoji ->
+                emojiPickerMessage = null
+                viewModel.toggleReaction(message, emoji)
+            },
+            onDismiss = { emojiPickerMessage = null },
         )
     }
 }
@@ -1457,10 +1492,15 @@ private fun MessageBubble(
     onOpenThread: () -> Unit,
     onAvatarClick: (UserDto) -> Unit,
     onEdit: () -> Unit,
-    onReact: () -> Unit,
+    quickReactionEmojis: List<String>,
+    onQuickReact: (String) -> Unit,
+    onReactionToggle: (String) -> Unit,
+    onOpenReactionDetails: () -> Unit,
+    onOpenEmojiPicker: () -> Unit,
     onDelete: () -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    var anchorBounds by remember { mutableStateOf(IntRect.Zero) }
     val context = LocalContext.current
     val fontScale = FontSizeOption.from(LocalAppSettings.current.fontSizeKey).scale
     val showUidInChat = LocalAppSettings.current.showUidInChat
@@ -1516,7 +1556,17 @@ private fun MessageBubble(
             val stickerOnly = message.sticker != null &&
                 message.replyToMessage == null &&
                 message.message.isNullOrBlank()
-            Box {
+            Box(
+                modifier = Modifier.onGloballyPositioned { coordinates ->
+                    val rect = coordinates.boundsInWindow()
+                    anchorBounds = IntRect(
+                        rect.left.roundToInt(),
+                        rect.top.roundToInt(),
+                        rect.right.roundToInt(),
+                        rect.bottom.roundToInt(),
+                    )
+                },
+            ) {
                 Column(
                     modifier = Modifier
                         .graphicsLayer { translationX = slideOffset.value }
@@ -1690,103 +1740,144 @@ private fun MessageBubble(
                             }
                         }
                     }
-                    if (message.reactions.isNotEmpty()) {
-                        Row(modifier = Modifier.padding(top = 4.dp)) {
-                            message.reactions.forEach { reaction ->
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (reaction.reactedByMe == true) {
-                                        MaterialTheme.colorScheme.tertiaryContainer
-                                    } else {
-                                        MaterialTheme.colorScheme.surface
-                                    },
-                                    modifier = Modifier
-                                        .padding(end = 4.dp)
-                                        .clickable(onClick = onReact),
-                                ) {
-                                    Text(
-                                        text = "${reaction.emoji} ${reaction.count}",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                }
+                if (menuExpanded) {
+                    Box(modifier = Modifier.matchParentSize()) {
+                        MessageActionMenu(
+                            expanded = true,
+                            mine = mine,
+                            anchorBounds = anchorBounds,
+                            quickReactionEmojis = quickReactionEmojis,
+                            onQuickReact = { emoji ->
+                                menuExpanded = false
+                                onQuickReact(emoji)
+                            },
+                            onOpenEmojiPicker = {
+                                menuExpanded = false
+                                onOpenEmojiPicker()
+                            },
+                            actions = buildList {
+                                add(
+                                    MessageActionItem(
+                                        label = stringResource(R.string.chat_reply_to),
+                                        icon = Icons.AutoMirrored.Filled.Reply,
+                                        onClick = {
+                                            menuExpanded = false
+                                            onReply()
+                                        },
+                                    ),
+                                )
+                                if (mine && (!message.message.isNullOrBlank() || message.attachments.isNotEmpty())) {
+                                    add(
+                                        MessageActionItem(
+                                            label = stringResource(R.string.chat_edit),
+                                            icon = Icons.Filled.Edit,
+                                            onClick = {
+                                                menuExpanded = false
+                                                onEdit()
+                                            },
+                                        ),
                                     )
                                 }
-                            }
-                        }
+                                if (!threadMode) {
+                                    add(
+                                        MessageActionItem(
+                                            label = stringResource(R.string.chat_thread),
+                                            icon = Icons.Filled.Forum,
+                                            onClick = {
+                                                menuExpanded = false
+                                                onOpenThread()
+                                            },
+                                        ),
+                                    )
+                                }
+                                if (message.reactions.isNotEmpty()) {
+                                    add(
+                                        MessageActionItem(
+                                            label = stringResource(R.string.chat_reactions),
+                                            icon = Icons.Filled.EmojiEmotions,
+                                            onClick = {
+                                                menuExpanded = false
+                                                onOpenReactionDetails()
+                                            },
+                                        ),
+                                    )
+                                }
+                                if (!message.message.isNullOrBlank()) {
+                                    add(
+                                        MessageActionItem(
+                                            label = stringResource(R.string.chat_copy),
+                                            icon = Icons.Filled.ContentCopy,
+                                            onClick = {
+                                                menuExpanded = false
+                                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                                                    as ClipboardManager
+                                                cm.setPrimaryClip(
+                                                    ClipData.newPlainText("message", message.message),
+                                                )
+                                            },
+                                        ),
+                                    )
+                                }
+                                add(
+                                    MessageActionItem(
+                                        label = stringResource(R.string.chat_copy_link),
+                                        icon = Icons.Filled.Link,
+                                        onClick = {
+                                            menuExpanded = false
+                                            val link = buildPermalinkUrl(
+                                                chatId = message.chatId,
+                                                messageId = message.id,
+                                                apiBase = AppGraph.session.snapshot().serverUrl,
+                                            )
+                                            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                                                as ClipboardManager
+                                            cm.setPrimaryClip(ClipData.newPlainText("message link", link))
+                                            Toast.makeText(
+                                                context,
+                                                R.string.chat_link_copied,
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                        },
+                                    ),
+                                )
+                                if (mine) {
+                                    add(
+                                        MessageActionItem(
+                                            label = stringResource(R.string.chat_recall),
+                                            icon = Icons.Filled.Delete,
+                                            destructive = true,
+                                            onClick = {
+                                                menuExpanded = false
+                                                onDelete()
+                                            },
+                                        ),
+                                    )
+                                }
+                            },
+                            onDismiss = { menuExpanded = false },
+                        )
                     }
                 }
-                DropdownMenu(
-                    expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false },
+            }
+            val sortedReactions = message.reactions.sortedWith(
+                compareByDescending<net.paigu.chahua.data.models.ReactionDto> { it.count }
+                    .thenBy { it.emoji },
+            )
+            if (sortedReactions.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
                 ) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.chat_reply_to)) },
-                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = null) },
-                        onClick = {
-                            menuExpanded = false
-                            onReply()
-                        },
-                    )
-                    if (mine && (!message.message.isNullOrBlank() || message.attachments.isNotEmpty())) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.chat_edit)) },
-                            leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
-                            onClick = {
+                    sortedReactions.forEach { reaction ->
+                        ReactionPill(
+                            reaction = reaction,
+                            mine = mine,
+                            onToggle = { emoji ->
                                 menuExpanded = false
-                                onEdit()
-                            },
-                        )
-                    }
-                    if (!threadMode) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.chat_thread)) },
-                            leadingIcon = { Icon(Icons.Filled.Forum, contentDescription = null) },
-                            onClick = {
-                                menuExpanded = false
-                                onOpenThread()
-                            },
-                        )
-                    }
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.chat_react)) },
-                        leadingIcon = { Icon(Icons.Filled.MoreVert, contentDescription = null) },
-                        onClick = {
-                            menuExpanded = false
-                            onReact()
-                        },
-                    )
-                    if (!message.message.isNullOrBlank()) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.chat_copy)) },
-                            leadingIcon = { Icon(Icons.Filled.ContentCopy, contentDescription = null) },
-                            onClick = {
-                                menuExpanded = false
-                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                cm.setPrimaryClip(ClipData.newPlainText("message", message.message))
-                            },
-                        )
-                    }
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.chat_copy_link)) },
-                        leadingIcon = { Icon(Icons.Filled.Link, contentDescription = null) },
-                        onClick = {
-                            menuExpanded = false
-                            val link = buildPermalinkUrl(
-                                chatId = message.chatId,
-                                messageId = message.id,
-                                apiBase = AppGraph.session.snapshot().serverUrl,
-                            )
-                            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            cm.setPrimaryClip(ClipData.newPlainText("message link", link))
-                            Toast.makeText(context, R.string.chat_link_copied, Toast.LENGTH_SHORT).show()
-                        },
-                    )
-                    if (mine) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.chat_recall)) },
-                            leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
-                            onClick = {
-                                menuExpanded = false
-                                onDelete()
+                                onReactionToggle(emoji)
                             },
                         )
                     }
