@@ -53,6 +53,9 @@
     <string name="settings_logout">Sign out</string>
 
     <string name="settings_general">General</string>
+    <string name="settings_saved_messages">Saved Messages</string>
+    <string name="settings_saved_messages_empty">No saved messages yet</string>
+    <string name="settings_unsave">Unsave</string>
     <string name="settings_appearance">Appearance</string>
     <string name="settings_emoji_stickers">Emojis &amp; Stickers</string>
     <string name="settings_notifications">Notifications</string>
@@ -134,6 +137,7 @@
     <string name="settings_pack_name_hint">Enter a pack name</string>
     <string name="settings_pack_owned">Owned</string>
     <string name="settings_pack_sticker_count">%1$d stickers</string>
+    <string name="settings_pack_move_top">Move to top</string>
     <string name="settings_packs_empty">No favorited sticker packs yet</string>
     <string name="settings_pack_empty">This pack has no stickers yet</string>
     <string name="settings_add_sticker">Add sticker</string>
@@ -198,6 +202,12 @@
     <string name="chat_unarchive">Unarchive thread</string>
     <string name="chat_cancel_reply">Cancel reply</string>
     <string name="chat_cancel_edit">Cancel edit</string>
+    <string name="chat_cancel">Cancel</string>
+    <string name="chat_create">Create</string>
+    <string name="chat_create_chat">New chat</string>
+    <string name="chat_create_name_hint">Chat name</string>
+    <string name="chat_create_failed">Failed to create chat</string>
+    <string name="chat_create_permission_denied">You do not have permission to create chats</string>
     <string name="chat_reply_preview">Reply to %1$s: %2$s</string>
     <string name="chat_reply_to">Reply</string>
     <string name="chat_reply_message">message</string>
@@ -218,6 +228,22 @@
     <string name="chat_link_copied">Message link copied</string>
     <string name="chat_recall">Recall</string>
     <string name="chat_save">Save</string>
+    <string name="chat_saved_message">Message saved</string>
+    <string name="chat_pin">Pin</string>
+    <string name="chat_unpin">Unpin</string>
+    <string name="chat_pinned">Message pinned</string>
+    <string name="chat_unpinned">Message unpinned</string>
+    <string name="chat_pin_list">Pinned messages</string>
+    <string name="chat_pin_empty">No pinned messages</string>
+    <string name="chat_pinned_message">Pinned message</string>
+    <string name="chat_sticker_message">Sticker</string>
+    <string name="chat_attachment_message">Attachment</string>
+    <string name="chat_unknown_sender">User</string>
+    <string name="chat_close">Close</string>
+    <string name="chat_sticker_favorite">Favorite sticker</string>
+    <string name="chat_sticker_unfavorite">Remove from favorites</string>
+    <string name="chat_sticker_favorited">Sticker added to favorites</string>
+    <string name="chat_sticker_unfavorited">Removed from favorites</string>
     <string name="chat_delete">Delete</string>
     <string name="chat_sending">Sending…</string>
     <string name="chat_empty">No messages yet. Say hello!</string>
@@ -225,6 +251,10 @@
     <string name="chat_image">[Image]</string>
     <string name="chat_video">[Video]</string>
     <string name="chat_audio">[Voice]</string>
+    <string name="chat_voice_record">Record voice</string>
+    <string name="chat_voice_stop">Stop recording</string>
+    <string name="chat_voice_permission_denied">Microphone permission is required</string>
+    <string name="chat_voice_start_failed">Failed to start recording</string>
     <string name="chat_file">[File]</string>
     <string name="chat_sticker">[Sticker]</string>
     <string name="chat_message">[Message]</string>
@@ -235,6 +265,20 @@
     <string name="chat_read_image_failed">Cannot read the selected image</string>
 
     <string name="group_info_title">Group Info</string>
+    <string name="group_edit">Edit group</string>
+    <string name="group_save">Save</string>
+    <string name="group_saved_changes">Changes saved</string>
+    <string name="group_name">Group name</string>
+    <string name="group_description">Group description</string>
+    <string name="group_name_required">Group name is required</string>
+    <string name="group_change_avatar">Change avatar</string>
+    <string name="group_invites">Invites</string>
+    <string name="group_invite_create">Create invite</string>
+    <string name="group_invite_created">Invite created, link copied</string>
+    <string name="group_invite_created_at">Created %1$s</string>
+    <string name="group_invites_empty">No invites yet</string>
+    <string name="group_invite_copy">Copy invite link</string>
+    <string name="group_invite_revoke">Revoke invite</string>
     <string name="group_search">Search</string>
     <string name="group_saved">Saved</string>
     <string name="group_mute">Mute</string>

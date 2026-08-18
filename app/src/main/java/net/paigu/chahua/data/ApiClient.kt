@@ -118,6 +118,15 @@ class ApiClient(
         executeRaw(method, path, query, body = null)
     }
 
+    /** 发送带 JSON 请求体、但不关心响应内容的请求（后端返回 200 + null 等）。 */
+    suspend fun noContentWithBody(
+        method: String,
+        path: String,
+        body: Any?,
+    ) {
+        executeRaw(method, path, emptyMap(), body = body)
+    }
+
     suspend fun uploadBytes(
         uploadUrl: String,
         headers: Map<String, String>,

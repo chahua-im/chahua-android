@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
@@ -27,12 +28,14 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material3.Badge
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
@@ -46,6 +49,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -62,6 +67,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.window.embedding.SplitController
 import net.paigu.chahua.R
+import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.data.models.ChatDto
 import net.paigu.chahua.data.models.ThreadDto
 import net.paigu.chahua.ui.chat.ChatActivity
@@ -76,6 +82,7 @@ import net.paigu.chahua.ui.invite.InviteRedeemActivity
 import net.paigu.chahua.ui.media.MediaViewerActivity
 import net.paigu.chahua.ui.theme.LocalAppSettings
 import net.paigu.chahua.ui.theme.ChahuaTheme
+import kotlinx.coroutines.launch
 
 /** 聊天页 Fragment：手机为单栏列表；平板（宽屏）为「左列表 + 右聊天详情」双栏布局。 */
 class ChatFragment : Fragment() {
@@ -351,6 +358,13 @@ fun ChatListScreen(
     val error by viewModel.error.collectAsState()
     val errorText = error
     val latencyMs by viewModel.latencyMs.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var createName by remember { mutableStateOf("") }
+    var creating by remember { mutableStateOf(false) }
+    val permissions = AppGraph.session.snapshot().me?.permissions.orEmpty()
+    val canCreateChat = permissions.any { it == "permission.all" || it == "chat.create" }
 
     LaunchedEffect(safeIndex, settings.showAllTab) {
         when (tab) {
@@ -382,7 +396,7 @@ fun ChatListScreen(
                             modifier = Modifier.padding(end = 4.dp),
                         )
                     }
-                    IconButton(onClick = onOpenInvite) {
+                    IconButton(onClick = { showCreateDialog = true }) {
                         Icon(
                             Icons.Filled.Add,
                             contentDescription = stringResource(R.string.invite_join_group),
@@ -497,6 +511,82 @@ fun ChatListScreen(
                 }
             }
         }
+    }
+
+    if (showCreateDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!creating) showCreateDialog = false },
+            title = { Text(stringResource(R.string.chat_create_chat)) },
+            text = {
+                Column {
+                    if (canCreateChat) {
+                        OutlinedTextField(
+                            value = createName,
+                            onValueChange = { createName = it },
+                            label = { Text(stringResource(R.string.chat_create_name_hint)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    } else {
+                        Text(
+                            text = stringResource(R.string.chat_create_permission_denied),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(
+                        onClick = {
+                            showCreateDialog = false
+                            onOpenInvite()
+                        },
+                        modifier = Modifier.align(Alignment.End),
+                    ) {
+                        Text(stringResource(R.string.invite_join_group))
+                    }
+                }
+            },
+            confirmButton = {
+                if (canCreateChat) {
+                    TextButton(
+                        enabled = createName.isNotBlank() && !creating,
+                        onClick = {
+                            creating = true
+                            scope.launch {
+                                val created = runCatching {
+                                    AppGraph.api.createChat(createName.trim())
+                                }
+                                creating = false
+                                created
+                                    .onSuccess { chat ->
+                                        showCreateDialog = false
+                                        createName = ""
+                                        viewModel.loadChats()
+                                        onOpenChat(chat.id, chat.name ?: chat.id)
+                                    }
+                                    .onFailure {
+                                        Toast.makeText(
+                                            context,
+                                            it.message
+                                                ?: context.getString(R.string.chat_create_failed),
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    }
+                            }
+                        },
+                    ) {
+                        Text(stringResource(R.string.chat_create))
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !creating,
+                    onClick = { showCreateDialog = false },
+                ) {
+                    Text(stringResource(R.string.chat_cancel))
+                }
+            },
+        )
     }
 }
 

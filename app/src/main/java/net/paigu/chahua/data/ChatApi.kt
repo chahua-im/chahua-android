@@ -3,15 +3,24 @@ package net.paigu.chahua.data
 import java.io.InputStream
 import net.paigu.chahua.data.models.AuthTokenResponse
 import net.paigu.chahua.data.models.CreateStickerPackBody
+import net.paigu.chahua.data.models.CreateChatBody
+import net.paigu.chahua.data.models.CreateChatResponse
+import net.paigu.chahua.data.models.CreateInviteBody
 import net.paigu.chahua.data.models.CreateMessageBody
+import net.paigu.chahua.data.models.CreatePinBody
 import net.paigu.chahua.data.models.FavoriteStickerListResponse
+import net.paigu.chahua.data.models.GroupAvatarUploadUrlRequest
+import net.paigu.chahua.data.models.GroupAvatarUploadUrlResponse
 import net.paigu.chahua.data.models.GroupInfoDto
+import net.paigu.chahua.data.models.InviteResponse
 import net.paigu.chahua.data.models.InvitePreviewResponse
 import net.paigu.chahua.data.models.ListChatAttachmentsResponse
 import net.paigu.chahua.data.models.ListChatsResponse
 import net.paigu.chahua.data.models.ListGroupsResponse
+import net.paigu.chahua.data.models.ListInvitesResponse
 import net.paigu.chahua.data.models.ListMembersResponse
 import net.paigu.chahua.data.models.ListMessagesResponse
+import net.paigu.chahua.data.models.ListPinsResponse
 import net.paigu.chahua.data.models.ListSavedMessagesResponse
 import net.paigu.chahua.data.models.ListThreadsResponse
 import net.paigu.chahua.data.models.MarkReadResponse
@@ -19,14 +28,20 @@ import net.paigu.chahua.data.models.MeResponse
 import net.paigu.chahua.data.models.MessageDto
 import net.paigu.chahua.data.models.MuteBody
 import net.paigu.chahua.data.models.MuteResponse
+import net.paigu.chahua.data.models.PinDto
 import net.paigu.chahua.data.models.RedeemInviteBody
 import net.paigu.chahua.data.models.RedeemInviteResponse
 import net.paigu.chahua.data.models.ReactionDetailResponse
+import net.paigu.chahua.data.models.SavedMessageDto
+import net.paigu.chahua.data.models.SendInviteMessageBody
 import net.paigu.chahua.data.models.StickerPackDetailResponse
 import net.paigu.chahua.data.models.StickerPackListResponse
 import net.paigu.chahua.data.models.StickerPackSummaryDto
 import net.paigu.chahua.data.models.StickerSummaryDto
 import net.paigu.chahua.data.models.TicketResponse
+import net.paigu.chahua.data.models.UpdateGroupBody
+import net.paigu.chahua.data.models.UpdateStickerPackOrderItemBody
+import net.paigu.chahua.data.models.UpdateStickerPackOrderRequest
 import net.paigu.chahua.data.models.UploadUrlRequest
 import net.paigu.chahua.data.models.UploadUrlResponse
 
@@ -322,7 +337,124 @@ class ChatApi(
         )
         return ApiJson.instance.decodeFromString(StickerSummaryDto.serializer(), raw)
     }
+
+    /** 收藏 / 取消收藏一张贴纸。 */
+    suspend fun favoriteSticker(stickerId: String) {
+        client.noContent("PUT", "stickers/$stickerId/favorite")
+    }
+
+    suspend fun unfavoriteSticker(stickerId: String) {
+        client.noContent("DELETE", "stickers/$stickerId/favorite")
+    }
+
+    /** 同步贴纸包排序。 */
+    suspend fun updateStickerPackOrder(order: List<UpdateStickerPackOrderItemBody>) {
+        client.noContentWithBody(
+            "PUT",
+            "users/me/stickerpack-order",
+            UpdateStickerPackOrderRequest(order = order),
+        )
+    }
+
+    // ---- 收藏消息 ----
+
+    /** 全局收藏消息列表。 */
+    suspend fun savedMessages(limit: Int = 50, before: String? = null): ListSavedMessagesResponse =
+        client.get(
+            "saved-messages",
+            buildMap {
+                put("limit", limit.toString())
+                before?.let { put("before", it) }
+            },
+        )
+
+    /** 收藏一条消息。 */
+    suspend fun saveMessage(messageId: String): SavedMessageDto =
+        client.putNoBody("saved-messages/$messageId")
+
+    /** 按原消息 ID 取消收藏。 */
+    suspend fun unsaveMessage(messageId: String) {
+        client.noContent("DELETE", "saved-messages/by-message/$messageId")
+    }
+
+    /** 按收藏记录 ID 取消收藏。 */
+    suspend fun deleteSavedMessage(savedMessageId: String) {
+        client.noContent("DELETE", "saved-messages/by-id/$savedMessageId")
+    }
+
+    // ---- 消息置顶 ----
+
+    suspend fun pins(chatId: String): ListPinsResponse =
+        client.get("chats/$chatId/pins")
+
+    suspend fun createPin(chatId: String, messageId: String): PinDto =
+        client.post("chats/$chatId/pins", body = CreatePinBody(messageId = messageId))
+
+    suspend fun deletePin(chatId: String, pinId: String) {
+        client.noContent("DELETE", "chats/$chatId/pins/$pinId")
+    }
+
+    // ---- 新建群聊 / 群资料 ----
+
+    suspend fun createChat(name: String?): CreateChatResponse =
+        client.post("group", body = CreateChatBody(name = name))
+
+    suspend fun updateGroupInfo(chatId: String, body: UpdateGroupBody): GroupInfoDto =
+        client.patch("group/$chatId", body = body)
+
+    suspend fun groupAvatarUploadUrl(
+        chatId: String,
+        filename: String,
+        contentType: String,
+        size: Long,
+    ): GroupAvatarUploadUrlResponse = client.post(
+        "group/$chatId/avatar/upload-url",
+        body = GroupAvatarUploadUrlRequest(
+            filename = filename,
+            contentType = contentType,
+            size = size,
+        ),
+    )
+
+    // ---- 邀请管理 ----
+
+    suspend fun invites(groupId: String, limit: Int = 100): ListInvitesResponse =
+        client.get(
+            "invites",
+            buildMap {
+                put("groupId", groupId)
+                put("limit", limit.toString())
+            },
+        )
+
+    suspend fun createInvite(chatId: String, inviteType: String = "generic"): InviteResponse =
+        client.post("invites", body = CreateInviteBody(chatId = chatId, inviteType = inviteType))
+
+    suspend fun deleteInvite(inviteId: String) {
+        client.noContent("DELETE", "invites/invite/$inviteId")
+    }
+
+    suspend fun sendInviteMessage(
+        sourceChatId: String,
+        destinationChatId: String,
+        inviteId: String?,
+        clientGeneratedId: String,
+    ): SendInviteMessageResponse = client.post(
+        "invites/send",
+        body = SendInviteMessageBody(
+            sourceChatId = sourceChatId,
+            destinationChatId = destinationChatId,
+            inviteId = inviteId,
+            clientGeneratedId = clientGeneratedId,
+        ),
+    )
 }
+
+@kotlinx.serialization.Serializable
+data class SendInviteMessageResponse(
+    val invite: net.paigu.chahua.data.models.InviteResponse,
+    val message: net.paigu.chahua.data.models.MessageDto,
+)
 
 @kotlinx.serialization.Serializable
 data class EditMessageBody(

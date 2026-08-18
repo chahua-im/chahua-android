@@ -549,3 +549,98 @@ data class BulkDeletedDto(
 data class PresenceUpdateDto(
     val activeConnections: Long = 0,
 )
+
+/** 置顶消息，对应 PinResponse。 */
+@Serializable
+data class PinDto(
+    val id: String,
+    val chatId: String,
+    val message: MessageDto,
+    val pinnedBy: Int = 0,
+    val pinnedAt: String? = null,
+    val expiresAt: String? = null,
+)
+
+@Serializable
+data class ListPinsResponse(
+    val pins: List<PinDto> = emptyList(),
+)
+
+@Serializable
+data class CreatePinBody(
+    val messageId: String,
+)
+
+/** 新建群聊请求与响应。 */
+@Serializable
+data class CreateChatBody(
+    val name: String? = null,
+)
+
+@Serializable
+data class CreateChatResponse(
+    val id: String,
+    val name: String? = null,
+    val createdAt: String? = null,
+)
+
+/** 更新群资料（管理员）。 */
+@Serializable
+data class UpdateGroupBody(
+    val name: String? = null,
+    val description: String? = null,
+    val avatarImageId: String? = null,
+)
+
+@Serializable
+data class GroupAvatarUploadUrlRequest(
+    val filename: String,
+    val contentType: String,
+    val size: Long,
+    val width: Int? = null,
+    val height: Int? = null,
+)
+
+@Serializable
+data class GroupAvatarUploadUrlResponse(
+    val imageId: String,
+    val uploadUrl: String,
+    val uploadHeaders: Map<String, String> = emptyMap(),
+)
+
+/** 邀请码列表 / 创建。 */
+@Serializable
+data class ListInvitesResponse(
+    val invites: List<InviteResponse> = emptyList(),
+)
+
+@Serializable
+data class CreateInviteBody(
+    val chatId: String,
+    val inviteType: String = "generic",
+    val targetUid: Int? = null,
+    val requiredChatId: String? = null,
+    val expiresAt: String? = null,
+)
+
+@Serializable
+data class SendInviteMessageBody(
+    val sourceChatId: String,
+    val destinationChatId: String,
+    val inviteId: String? = null,
+    val expiresAt: String? = null,
+    val clientGeneratedId: String,
+)
+
+/** 贴纸包排序同步。 */
+@Serializable
+data class UpdateStickerPackOrderItemBody(
+    val stickerPackId: String,
+    val lastUsedOn: Long,
+    val isAutoSort: Boolean? = null,
+)
+
+@Serializable
+data class UpdateStickerPackOrderRequest(
+    val order: List<UpdateStickerPackOrderItemBody> = emptyList(),
+)

@@ -7,6 +7,8 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -32,8 +34,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
@@ -180,6 +186,8 @@ class GroupInfoActivity : ComponentActivity() {
 
 private enum class GroupInfoMode {
     INFO,
+    EDIT,
+    INVITES,
     SEARCH,
     SAVED,
     MEMBERS,
@@ -228,6 +236,8 @@ private fun GroupInfoScreen(
                         stringResource(
                             when (mode) {
                                 GroupInfoMode.INFO -> R.string.group_info_title
+                                GroupInfoMode.EDIT -> R.string.group_edit
+                                GroupInfoMode.INVITES -> R.string.group_invites
                                 GroupInfoMode.SEARCH -> R.string.group_search
                                 GroupInfoMode.SAVED -> R.string.group_saved
                                 GroupInfoMode.MEMBERS -> R.string.group_members
@@ -247,6 +257,16 @@ private fun GroupInfoScreen(
                         )
                     }
                 },
+                actions = {
+                    if (mode == GroupInfoMode.INFO && state.info?.myRole == "admin") {
+                        IconButton(onClick = { mode = GroupInfoMode.EDIT }) {
+                            Icon(
+                                Icons.Filled.Edit,
+                                contentDescription = stringResource(R.string.group_edit),
+                            )
+                        }
+                    }
+                },
             )
         },
     ) { padding ->
@@ -259,6 +279,7 @@ private fun GroupInfoScreen(
                 onOpenSearch = { mode = GroupInfoMode.SEARCH },
                 onOpenSaved = { mode = GroupInfoMode.SAVED },
                 onOpenMembers = { mode = GroupInfoMode.MEMBERS },
+                onOpenInvites = { mode = GroupInfoMode.INVITES },
                 onToggleMute = {
                     if (!muting) {
                         muting = true
@@ -267,6 +288,16 @@ private fun GroupInfoScreen(
                 },
                 onLeaveClick = { showLeaveConfirm = true },
                 onOpenMedia = onOpenMedia,
+                modifier = Modifier.padding(padding),
+            )
+            GroupInfoMode.EDIT -> EditContent(
+                state = state,
+                viewModel = viewModel,
+                modifier = Modifier.padding(padding),
+            )
+            GroupInfoMode.INVITES -> InvitesContent(
+                state = state,
+                viewModel = viewModel,
                 modifier = Modifier.padding(padding),
             )
             GroupInfoMode.SEARCH -> SearchContent(
@@ -336,6 +367,7 @@ private fun InfoContent(
     onOpenSearch: () -> Unit,
     onOpenSaved: () -> Unit,
     onOpenMembers: () -> Unit,
+    onOpenInvites: () -> Unit,
     onToggleMute: () -> Unit,
     onLeaveClick: () -> Unit,
     onOpenMedia: (url: String, kind: String, fileName: String?) -> Unit,
@@ -399,6 +431,7 @@ private fun InfoContent(
                         onOpenSearch = onOpenSearch,
                         onOpenSaved = onOpenSaved,
                         onOpenMembers = onOpenMembers,
+                        onOpenInvites = onOpenInvites,
                         onToggleMute = onToggleMute,
                         onLeaveClick = onLeaveClick,
                     )
@@ -484,6 +517,7 @@ private fun GroupInfoHeader(
     onOpenSearch: () -> Unit,
     onOpenSaved: () -> Unit,
     onOpenMembers: () -> Unit,
+    onOpenInvites: () -> Unit,
     onToggleMute: () -> Unit,
     onLeaveClick: () -> Unit,
 ) {
@@ -543,6 +577,13 @@ private fun GroupInfoHeader(
                 ),
                 onClick = onToggleMute,
             )
+            if (info.myRole == "admin") {
+                GroupActionButton(
+                    icon = Icons.Filled.Link,
+                    label = stringResource(R.string.group_invites),
+                    onClick = onOpenInvites,
+                )
+            }
         }
         Spacer(modifier = Modifier.height(20.dp))
         Button(
@@ -565,6 +606,241 @@ private fun GroupInfoHeader(
             )
         }
     }
+}
+
+/** 群资料编辑（管理员）：名称 / 简介 / 头像。 */
+@Composable
+private fun EditContent(
+    state: GroupInfoUiState,
+    viewModel: GroupInfoViewModel,
+    modifier: Modifier = Modifier,
+) {
+    val info = state.info
+    var name by remember(info?.id) { mutableStateOf(info?.name.orEmpty()) }
+    var description by remember(info?.id) { mutableStateOf(info?.description.orEmpty()) }
+    val context = LocalContext.current
+    val pickAvatar = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent(),
+    ) { uri ->
+        if (uri != null) {
+            viewModel.uploadAvatar(
+                uri = uri,
+                onDone = {
+                    Toast.makeText(
+                        context,
+                        R.string.group_saved_changes,
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                },
+                onError = {
+                    Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+                },
+            )
+        }
+    }
+
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+    ) {
+        item {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                UserAvatar(
+                    url = info?.avatar,
+                    name = info?.name.orEmpty(),
+                    size = 96.dp,
+                    showBackground = true,
+                )
+                TextButton(
+                    onClick = { pickAvatar.launch("image/*") },
+                    enabled = !state.avatarUploading,
+                ) {
+                    if (state.avatarUploading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Text(stringResource(R.string.group_change_avatar))
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(stringResource(R.string.group_name)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text(stringResource(R.string.group_description)) },
+                    minLines = 3,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                Button(
+                    onClick = {
+                        viewModel.updateInfo(
+                            name = name,
+                            description = description,
+                            onDone = {
+                                Toast.makeText(
+                                    context,
+                                    R.string.group_saved_changes,
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            },
+                            onError = {
+                                Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+                            },
+                        )
+                    },
+                    enabled = name.isNotBlank() && !state.saving && !state.avatarUploading,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.group_save))
+                }
+            }
+        }
+    }
+}
+
+/** 邀请管理：生成通用邀请码、复制链接、撤销。 */
+@Composable
+private fun InvitesContent(
+    state: GroupInfoUiState,
+    viewModel: GroupInfoViewModel,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+
+    LaunchedEffect(Unit) {
+        viewModel.loadInvites()
+    }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        Button(
+            onClick = {
+                viewModel.createInvite { invite ->
+                    val link = buildInviteUrl(invite.code)
+                    val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                        as android.content.ClipboardManager
+                    cm.setPrimaryClip(
+                        android.content.ClipData.newPlainText("invite", link),
+                    )
+                    Toast.makeText(
+                        context,
+                        R.string.group_invite_created,
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            },
+            enabled = !state.creatingInvite,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+        ) {
+            if (state.creatingInvite) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+            Text(stringResource(R.string.group_invite_create))
+        }
+
+        if (state.loadingInvites && state.invites.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
+            }
+            return@Column
+        }
+        if (state.invites.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(R.string.group_invites_empty),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            return@Column
+        }
+
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            items(state.invites, key = { it.id }) { invite ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = invite.code,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.group_invite_created_at,
+                                formatListTime(invite.createdAt),
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            val cm = context.getSystemService(
+                                android.content.Context.CLIPBOARD_SERVICE,
+                            ) as android.content.ClipboardManager
+                            cm.setPrimaryClip(
+                                android.content.ClipData.newPlainText(
+                                    "invite",
+                                    buildInviteUrl(invite.code),
+                                ),
+                            )
+                            Toast.makeText(
+                                context,
+                                R.string.settings_copied,
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        },
+                    ) {
+                        Icon(
+                            Icons.Filled.ContentCopy,
+                            contentDescription = stringResource(R.string.group_invite_copy),
+                        )
+                    }
+                    IconButton(onClick = { viewModel.revokeInvite(invite.id) }) {
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = stringResource(R.string.group_invite_revoke),
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+            }
+        }
+    }
+}
+
+private fun buildInviteUrl(code: String): String {
+    val base = AppGraph.session.snapshot().serverUrl.trimEnd('/')
+    return "$base/chats/join/$code"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

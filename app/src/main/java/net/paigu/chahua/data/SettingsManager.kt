@@ -150,6 +150,24 @@ class SettingsManager(context: Context) {
 
     suspend fun current(): AppSettings = settingsState.first()
 
+    /** 会话输入草稿（按 chatId|threadId 存储）。 */
+    suspend fun saveChatDraft(chatId: String, threadId: String?, text: String) {
+        val key = draftKey(chatId, threadId)
+        prefs.edit { store ->
+            if (text.isBlank()) {
+                store.remove(key)
+            } else {
+                store[key] = text
+            }
+        }
+    }
+
+    suspend fun chatDraft(chatId: String, threadId: String?): String =
+        prefs.data.first()[draftKey(chatId, threadId)].orEmpty()
+
+    private fun draftKey(chatId: String, threadId: String?): Preferences.Key<String> =
+        stringPreferencesKey("chat_draft_${chatId}|${threadId.orEmpty()}")
+
     fun snapshot(): AppSettings = snapshot
 
     suspend fun setShowAllTab(enabled: Boolean) {

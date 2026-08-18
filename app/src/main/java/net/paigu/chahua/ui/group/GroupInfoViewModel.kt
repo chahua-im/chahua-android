@@ -1,16 +1,22 @@
 package net.paigu.chahua.ui.group
 
 import android.app.Application
+import android.content.ContentResolver
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import net.paigu.chahua.R
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.data.models.ChatAttachmentDto
 import net.paigu.chahua.data.models.GroupInfoDto
+import net.paigu.chahua.data.models.InviteResponse
 import net.paigu.chahua.data.models.MemberDto
 import net.paigu.chahua.data.models.MessageDto
 import net.paigu.chahua.data.models.SavedMessageDto
@@ -42,6 +48,11 @@ data class GroupInfoUiState(
     val membersLoadingMore: Boolean = false,
     val membersCursor: Int? = null,
     val membersSearchQuery: String = "",
+    val saving: Boolean = false,
+    val avatarUploading: Boolean = false,
+    val invites: List<InviteResponse> = emptyList(),
+    val loadingInvites: Boolean = false,
+    val creatingInvite: Boolean = false,
 )
 
 class GroupInfoViewModel(application: Application) : AndroidViewModel(application) {
@@ -288,6 +299,164 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    /** 更新群名称与简介（管理员）。 */
+    fun updateInfo(
+        name: String,
+        description: String,
+        onDone: () -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        val chatId = chatId ?: return
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) {
+            onError(getString(R.string.group_name_required))
+            return
+        }
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(saving = true)
+            runCatching {
+                api.updateGroupInfo(
+                    chatId = chatId,
+                    body = net.paigu.chahua.data.models.UpdateGroupBody(
+                        name = trimmedName,
+                        description = description.trim(),
+                    ),
+                )
+            }
+                .onSuccess { info ->
+                    store.setChatMuted(chatId, info.mutedUntil)
+                    _uiState.value = _uiState.value.copy(saving = false, info = info)
+                    onDone()
+                }
+                .onFailure {
+                    _uiState.value = _uiState.value.copy(saving = false, error = it.message)
+                    onError(it.message ?: getString(R.string.chat_action_failed))
+                }
+        }
+    }
+
+    /** 更换群头像：申请上传地址 -> 上传 -> 关联到群。 */
+    fun uploadAvatar(
+        uri: Uri,
+        onDone: () -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        val chatId = chatId ?: return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(avatarUploading = true)
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    val resolver = getApplication<Application>().contentResolver
+                    val name = queryDisplayName(resolver, uri) ?: "avatar_${System.currentTimeMillis()}"
+                    val contentType = resolver.getType(uri) ?: "image/jpeg"
+                    val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: throw IllegalStateException(getString(R.string.chat_read_file_failed))
+                    Triple(name, contentType, bytes)
+                }
+            }
+            result
+                .onSuccess { (name, contentType, bytes) ->
+                    val uploadResult = runCatching {
+                        val upload = api.groupAvatarUploadUrl(
+                            chatId = chatId,
+                            filename = name,
+                            contentType = contentType,
+                            size = bytes.size.toLong(),
+                        )
+                        api.uploadFile(upload.uploadUrl, upload.uploadHeaders, bytes, contentType)
+                        upload.imageId
+                    }
+                    uploadResult
+                        .onSuccess { imageId ->
+                            val patchResult = runCatching {
+                                api.updateGroupInfo(
+                                    chatId = chatId,
+                                    body = net.paigu.chahua.data.models.UpdateGroupBody(
+                                        avatarImageId = imageId,
+                                    ),
+                                )
+                            }
+                            _uiState.value = _uiState.value.copy(avatarUploading = false)
+                            patchResult
+                                .onSuccess { info ->
+                                    _uiState.value = _uiState.value.copy(info = info)
+                                    onDone()
+                                }
+                                .onFailure {
+                                    _uiState.value = _uiState.value.copy(error = it.message)
+                                    onError(it.message ?: getString(R.string.chat_action_failed))
+                                }
+                        }
+                        .onFailure {
+                            _uiState.value = _uiState.value.copy(avatarUploading = false)
+                            onError(it.message ?: getString(R.string.chat_action_failed))
+                        }
+                }
+                .onFailure {
+                    _uiState.value = _uiState.value.copy(avatarUploading = false)
+                    onError(it.message ?: getString(R.string.chat_action_failed))
+                }
+        }
+    }
+
+    /** 加载当前群的有效/全部邀请。 */
+    fun loadInvites() {
+        val chatId = chatId ?: return
+        if (_uiState.value.loadingInvites) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(loadingInvites = true)
+            runCatching { api.invites(groupId = chatId) }
+                .onSuccess { resp ->
+                    _uiState.value = _uiState.value.copy(
+                        loadingInvites = false,
+                        invites = resp.invites,
+                    )
+                }
+                .onFailure {
+                    _uiState.value = _uiState.value.copy(
+                        loadingInvites = false,
+                        error = it.message,
+                    )
+                }
+        }
+    }
+
+    fun createInvite(onCreated: (InviteResponse) -> Unit) {
+        val chatId = chatId ?: return
+        if (_uiState.value.creatingInvite) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(creatingInvite = true)
+            runCatching { api.createInvite(chatId = chatId, inviteType = "generic") }
+                .onSuccess { invite ->
+                    _uiState.value = _uiState.value.copy(
+                        creatingInvite = false,
+                        invites = listOf(invite) + _uiState.value.invites,
+                    )
+                    onCreated(invite)
+                }
+                .onFailure {
+                    _uiState.value = _uiState.value.copy(
+                        creatingInvite = false,
+                        error = it.message,
+                    )
+                }
+        }
+    }
+
+    fun revokeInvite(inviteId: String) {
+        viewModelScope.launch {
+            runCatching { api.deleteInvite(inviteId) }
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(
+                        invites = _uiState.value.invites.filterNot { it.id == inviteId },
+                    )
+                }
+                .onFailure {
+                    _uiState.value = _uiState.value.copy(error = it.message)
+                }
+        }
+    }
+
     fun leaveGroup(onResult: (Boolean) -> Unit) {
         val chatId = chatId ?: return
         val uid = AppGraph.session.snapshot().me?.uid ?: return
@@ -326,4 +495,18 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
 
     private fun getString(id: Int, vararg args: Any?): String =
         getApplication<Application>().getString(id, *args)
+
+    private fun queryDisplayName(resolver: ContentResolver, uri: Uri): String? = try {
+        resolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+    } catch (e: Exception) {
+        null
+    }
 }
