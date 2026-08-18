@@ -24,4 +24,3 @@ dependencyResolutionManagement {
 
 rootProject.name = "HelloWorld-Chahua"
 include(":app")
-
