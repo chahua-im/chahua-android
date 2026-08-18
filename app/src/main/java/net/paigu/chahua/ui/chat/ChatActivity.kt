@@ -1,10 +1,13 @@
 package net.paigu.chahua.ui.chat
 
+import android.Manifest
 import android.content.Context
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.media.MediaRecorder
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.widget.Toast
@@ -56,23 +59,31 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.AlertDialog
@@ -95,6 +106,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -135,9 +147,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.sp
+import androidx.media3.common.Player
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.paigu.chahua.data.models.MessageDto
+import net.paigu.chahua.data.models.PinDto
 import net.paigu.chahua.data.models.UserDto
 import net.paigu.chahua.R
 import net.paigu.chahua.core.AppGraph
@@ -161,6 +177,7 @@ import java.time.Duration
 import java.time.Instant
 import java.util.Base64
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class ChatActivity : ComponentActivity() {
@@ -300,6 +317,17 @@ internal fun ChatScreen(
     var input by remember { mutableStateOf(TextFieldValue("")) }
     val activeMentionQuery = remember(input) { extractActiveMentionQuery(input.text) }
 
+    LaunchedEffect(Unit) {
+        val restored = viewModel.loadDraft()
+        if (restored.isNotBlank()) {
+            input = TextFieldValue(restored, selection = TextRange(restored.length))
+        }
+    }
+    LaunchedEffect(input.text) {
+        delay(400)
+        viewModel.saveDraft(input.text)
+    }
+
     LaunchedEffect(activeMentionQuery) {
         if (activeMentionQuery == null) {
             viewModel.clearMentionCandidates()
@@ -311,6 +339,7 @@ internal fun ChatScreen(
     var profileUser by remember { mutableStateOf<UserDto?>(null) }
     var reactionDetailsMessage by remember { mutableStateOf<MessageDto?>(null) }
     var emojiPickerMessage by remember { mutableStateOf<MessageDto?>(null) }
+    var showPinList by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf<DraftAttachment?>(null) }
     var showAttachMenu by remember { mutableStateOf(false) }
     var showEmojiPanel by remember { mutableStateOf(false) }
@@ -322,6 +351,112 @@ internal fun ChatScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     val listState = rememberLazyListState()
     var restoreScrollKey by remember { mutableStateOf<String?>(null) }
+    var voicePhase by remember { mutableStateOf<VoicePhase?>(null) }
+    var voiceFile by remember { mutableStateOf<File?>(null) }
+    var voiceDurationMs by remember { mutableStateOf(0L) }
+    val voiceRecorderRef = remember { VoiceRecorderRef() }
+
+    fun beginVoiceRecording(appContext: Context) {
+        if (voicePhase != null) return
+        val dir = File(appContext.cacheDir, "voice").apply { mkdirs() }
+        val file = File(dir, "voice_${System.currentTimeMillis()}.m4a")
+        val recorder = if (Build.VERSION.SDK_INT >= 31) {
+            MediaRecorder(appContext)
+        } else {
+            @Suppress("DEPRECATION")
+            MediaRecorder()
+        }
+        val started = runCatching {
+            recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+            recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            recorder.setAudioEncodingBitRate(128_000)
+            recorder.setAudioSamplingRate(44_100)
+            recorder.setOutputFile(file.absolutePath)
+            recorder.prepare()
+            recorder.start()
+        }
+        if (started.isSuccess) {
+            voiceRecorderRef.recorder = recorder
+            voiceFile = file
+            voiceDurationMs = 0L
+            voicePhase = VoicePhase.RECORDING
+        } else {
+            runCatching { recorder.release() }
+            Toast.makeText(
+                appContext,
+                R.string.chat_voice_start_failed,
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
+    val recordAudioPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            beginVoiceRecording(context)
+        } else {
+            Toast.makeText(
+                context,
+                R.string.chat_voice_permission_denied,
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
+    fun finishVoiceRecording() {
+        runCatching { voiceRecorderRef.recorder?.stop() }
+        runCatching { voiceRecorderRef.recorder?.release() }
+        voiceRecorderRef.recorder = null
+        voicePhase = VoicePhase.RECORDED
+    }
+
+    fun cancelVoiceRecording() {
+        runCatching { voiceRecorderRef.recorder?.stop() }
+        runCatching { voiceRecorderRef.recorder?.release() }
+        voiceRecorderRef.recorder = null
+        voiceFile?.delete()
+        voiceFile = null
+        voicePhase = null
+    }
+
+    fun sendVoiceRecording() {
+        val file = voiceFile ?: return
+        voicePhase = null
+        viewModel.sendVoice(
+            uriString = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file,
+            ).toString(),
+            mimeType = "audio/mp4",
+            fileName = file.name,
+            onDone = {
+                file.delete()
+                voiceFile = null
+            },
+        )
+    }
+
+    LaunchedEffect(voicePhase) {
+        while (voicePhase == VoicePhase.RECORDING) {
+            delay(1000)
+            voiceDurationMs += 1000
+        }
+    }
+
+    fun requestVoiceRecording() {
+        if (Build.VERSION.SDK_INT >= 23 &&
+            context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            recordAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
+        } else {
+            beginVoiceRecording(context)
+        }
+    }
+
 
     fun sendCurrentMessage() {
         val text = input.text.trim()
@@ -612,7 +747,8 @@ internal fun ChatScreen(
                         },
                     )
                 }
-                Surface(tonalElevation = 3.dp) {
+                if (voicePhase == null) {
+                    Surface(tonalElevation = 3.dp) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -693,6 +829,15 @@ internal fun ChatScreen(
                             )
                         }
                         IconButton(
+                            onClick = { requestVoiceRecording() },
+                            modifier = Modifier.size(56.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.Mic,
+                                contentDescription = stringResource(R.string.chat_voice_record),
+                            )
+                        }
+                        IconButton(
                             onClick = { sendCurrentMessage() },
                             enabled = (input.text.isNotBlank() || draft != null) && !compressingVideo,
                             modifier = Modifier.size(56.dp),
@@ -703,6 +848,26 @@ internal fun ChatScreen(
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                         }
+                    }
+                }
+                } else {
+                    Surface(tonalElevation = 3.dp) {
+                        VoiceRecordingPanel(
+                            phase = voicePhase!!,
+                            durationMs = voiceDurationMs,
+                            onStop = { finishVoiceRecording() },
+                            onCancel = { cancelVoiceRecording() },
+                            onSend = { sendVoiceRecording() },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (consumeNavigationBarsInset) {
+                                        Modifier.navigationBarsPadding()
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
+                        )
                     }
                 }
             }
@@ -727,8 +892,10 @@ internal fun ChatScreen(
                     modifier = Modifier.fillMaxSize(),
                     reverseLayout = true,
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 12.dp,
-                        vertical = 8.dp,
+                        start = 12.dp,
+                        top = if (uiState.pins.isNotEmpty() && !uiState.threadMode) 56.dp else 8.dp,
+                        end = 12.dp,
+                        bottom = 8.dp,
                     ),
                 ) {
                     itemsIndexed(
@@ -790,6 +957,8 @@ internal fun ChatScreen(
                                 myAvatarUrl = me.avatarUrl,
                                 myName = me.name,
                                 myUid = viewModel.myUid(),
+                                isAdmin = uiState.myRole == "admin",
+                                isPinned = uiState.pins.any { it.message.id == item.message.id },
                                 modifier = itemModifier,
                                 showAvatar = showAvatar,
                                 showSenderName = showSenderName,
@@ -829,6 +998,42 @@ internal fun ChatScreen(
                                         ?.key as? String
                                     viewModel.deleteMessage(item.message)
                                 },
+                                onSaveMessage = {
+                                    viewModel.saveMessage(
+                                        messageId = item.message.id,
+                                        onDone = { toast ->
+                                            Toast.makeText(context, toast, Toast.LENGTH_SHORT).show()
+                                        },
+                                        onError = { err ->
+                                            Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                                        },
+                                    )
+                                },
+                                onPinMessage = {
+                                    viewModel.togglePin(
+                                        message = item.message,
+                                        onDone = { toast ->
+                                            Toast.makeText(context, toast, Toast.LENGTH_SHORT).show()
+                                        },
+                                        onError = { err ->
+                                            Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                                        },
+                                    )
+                                },
+                                onFavoriteSticker = { favorite ->
+                                    item.message.sticker?.id?.let { stickerId ->
+                                        viewModel.setStickerFavorite(
+                                            stickerId = stickerId,
+                                            favorite = favorite,
+                                            onDone = { toast ->
+                                                Toast.makeText(context, toast, Toast.LENGTH_SHORT).show()
+                                            },
+                                            onError = { err ->
+                                                Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                                            },
+                                        )
+                                    }
+                                },
                             )
                             is ChatItem.Pending -> PendingBubble(
                                 pending = item.pending,
@@ -851,6 +1056,15 @@ internal fun ChatScreen(
                             )
                         }
                     }
+                }
+                if (uiState.pins.isNotEmpty() && !uiState.threadMode) {
+                    PinBanner(
+                        pin = uiState.pins.first(),
+                        onClick = { showPinList = true },
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
                 }
             }
         }
@@ -969,6 +1183,253 @@ internal fun ChatScreen(
                 viewModel.toggleReaction(message, emoji)
             },
             onDismiss = { emojiPickerMessage = null },
+        )
+    }
+
+    if (showPinList) {
+        AlertDialog(
+            onDismissRequest = { showPinList = false },
+            title = { Text(stringResource(R.string.chat_pin_list)) },
+            text = {
+                if (uiState.pins.isEmpty()) {
+                    Text(stringResource(R.string.chat_pin_empty))
+                } else {
+                    LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                        items(
+                            items = uiState.pins,
+                            key = { it.id },
+                        ) { pin ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showPinList = false
+                                        viewModel.jumpToMessage(pin.message.id)
+                                    }
+                                    .padding(vertical = 10.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.PushPin,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(horizontal = 10.dp),
+                                ) {
+                                    Text(
+                                        text = pin.message.sender.name
+                                            ?: stringResource(R.string.chat_unknown_sender),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    val preview = when {
+                                        !pin.message.message.isNullOrBlank() -> pin.message.message
+                                        pin.message.sticker != null ->
+                                            stringResource(R.string.chat_sticker_message)
+                                        pin.message.attachments.isNotEmpty() ->
+                                            stringResource(R.string.chat_attachment_message)
+                                        else -> stringResource(R.string.chat_pinned_message)
+                                    }
+                                    Text(
+                                        text = preview.orEmpty(),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                                if (uiState.myRole == "admin") {
+                                    TextButton(
+                                        onClick = {
+                                            viewModel.togglePin(
+                                                message = pin.message,
+                                                onDone = { toast ->
+                                                    Toast.makeText(context, toast, Toast.LENGTH_SHORT).show()
+                                                },
+                                                onError = { err ->
+                                                    Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                                                },
+                                            )
+                                        },
+                                    ) {
+                                        Text(stringResource(R.string.chat_unpin))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showPinList = false }) {
+                    Text(stringResource(R.string.chat_close))
+                }
+            },
+        )
+    }
+}
+
+/** 置顶消息横幅：展示最近一条置顶内容，点击查看完整置顶列表。 */
+@Composable
+private fun PinBanner(
+    pin: PinDto,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        tonalElevation = 2.dp,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Row(
+            modifier = Modifier
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.PushPin,
+                contentDescription = stringResource(R.string.chat_pin),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            val preview = when {
+                !pin.message.message.isNullOrBlank() -> pin.message.message
+                pin.message.sticker != null -> stringResource(R.string.chat_sticker_message)
+                pin.message.attachments.isNotEmpty() -> stringResource(R.string.chat_attachment_message)
+                else -> stringResource(R.string.chat_pinned_message)
+            }
+            Text(
+                text = preview.orEmpty(),
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private enum class VoicePhase {
+    RECORDING,
+    RECORDED,
+}
+
+private class VoiceRecorderRef {
+    var recorder: MediaRecorder? = null
+}
+
+/** 录音控制条：录制中显示计时与停止，录制完成显示发送/取消。 */
+@Composable
+private fun VoiceRecordingPanel(
+    phase: VoicePhase,
+    durationMs: Long,
+    onStop: () -> Unit,
+    onCancel: () -> Unit,
+    onSend: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val seconds = (durationMs / 1000).coerceAtLeast(0)
+    val timeText = "%d:%02d".format(seconds / 60, seconds % 60)
+    Row(
+        modifier = modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Mic,
+            contentDescription = null,
+            tint = if (phase == VoicePhase.RECORDING) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.primary
+            },
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = timeText,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onCancel) {
+            Text(stringResource(R.string.chat_cancel))
+        }
+        if (phase == VoicePhase.RECORDING) {
+            IconButton(onClick = onStop) {
+                Icon(
+                    Icons.Filled.Stop,
+                    contentDescription = stringResource(R.string.chat_voice_stop),
+                    tint = MaterialTheme.colorScheme.error,
+                )
+            }
+        } else {
+            IconButton(onClick = onSend) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Send,
+                    contentDescription = stringResource(R.string.chat_send),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+    }
+}
+
+/** 语音消息气泡：使用 ExoPlayer 播放音频附件。 */
+@Composable
+private fun AudioMessageBubble(url: String) {
+    val context = LocalContext.current
+    val player = remember { ExoPlayer.Builder(context).build() }
+    var playing by remember { mutableStateOf(false) }
+
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                playing = isPlaying
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    playing = false
+                }
+            }
+        }
+        player.addListener(listener)
+        onDispose {
+            player.removeListener(listener)
+            player.release()
+        }
+    }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(
+            onClick = {
+                if (player.isPlaying) {
+                    player.pause()
+                } else {
+                    player.setMediaItem(MediaItem.fromUri(url))
+                    player.prepare()
+                    player.play()
+                }
+            },
+        ) {
+            Icon(
+                imageVector = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                contentDescription = stringResource(
+                    if (playing) R.string.media_pause else R.string.media_play,
+                ),
+            )
+        }
+        Text(
+            text = stringResource(R.string.chat_audio),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
         )
     }
 }
@@ -1482,6 +1943,8 @@ private fun MessageBubble(
     myAvatarUrl: String?,
     myName: String?,
     myUid: Int,
+    isAdmin: Boolean,
+    isPinned: Boolean,
     modifier: Modifier = Modifier,
     showAvatar: Boolean,
     showSenderName: Boolean,
@@ -1498,6 +1961,9 @@ private fun MessageBubble(
     onOpenReactionDetails: () -> Unit,
     onOpenEmojiPicker: () -> Unit,
     onDelete: () -> Unit,
+    onSaveMessage: () -> Unit,
+    onPinMessage: () -> Unit,
+    onFavoriteSticker: (Boolean) -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var anchorBounds by remember { mutableStateOf(IntRect.Zero) }
@@ -1669,6 +2135,9 @@ private fun MessageBubble(
                     }
                     message.attachments.forEach { attachment ->
                         when {
+                            attachment.kind.startsWith("audio") -> {
+                                AudioMessageBubble(url = attachment.url)
+                            }
                             attachment.kind.startsWith("image") -> {
                                 AuthAsyncImage(
                                     url = attachment.url,
@@ -1841,6 +2310,56 @@ private fun MessageBubble(
                                         },
                                     ),
                                 )
+                                add(
+                                    MessageActionItem(
+                                        label = stringResource(R.string.chat_save),
+                                        icon = Icons.Filled.Bookmark,
+                                        onClick = {
+                                            menuExpanded = false
+                                            onSaveMessage()
+                                        },
+                                    ),
+                                )
+                                if (isAdmin) {
+                                    add(
+                                        MessageActionItem(
+                                            label = stringResource(
+                                                if (isPinned) {
+                                                    R.string.chat_unpin
+                                                } else {
+                                                    R.string.chat_pin
+                                                },
+                                            ),
+                                            icon = Icons.Filled.PushPin,
+                                            onClick = {
+                                                menuExpanded = false
+                                                onPinMessage()
+                                            },
+                                        ),
+                                    )
+                                }
+                                message.sticker?.let { sticker ->
+                                    add(
+                                        MessageActionItem(
+                                            label = stringResource(
+                                                if (sticker.isFavorited) {
+                                                    R.string.chat_sticker_unfavorite
+                                                } else {
+                                                    R.string.chat_sticker_favorite
+                                                },
+                                            ),
+                                            icon = if (sticker.isFavorited) {
+                                                Icons.Filled.FavoriteBorder
+                                            } else {
+                                                Icons.Filled.Favorite
+                                            },
+                                            onClick = {
+                                                menuExpanded = false
+                                                onFavoriteSticker(!sticker.isFavorited)
+                                            },
+                                        ),
+                                    )
+                                }
                                 if (mine) {
                                     add(
                                         MessageActionItem(

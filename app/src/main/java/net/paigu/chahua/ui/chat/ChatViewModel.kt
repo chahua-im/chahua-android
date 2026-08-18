@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.paigu.chahua.data.models.MessageDto
+import net.paigu.chahua.data.models.PinDto
 import net.paigu.chahua.data.models.ReactionDto
 import net.paigu.chahua.data.models.ReactionDetailResponse
 import net.paigu.chahua.data.models.StickerPackDetailResponse
@@ -95,6 +96,8 @@ data class ChatUiState(
     val threadReplyCount: Long = 0,
     val title: String = "",
     val scrollToMessageId: String? = null,
+    val myRole: String? = null,
+    val pins: List<PinDto> = emptyList(),
 )
 
 data class StickerPanelUiState(
@@ -170,8 +173,97 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     .sortedBy { it.sortKey }
             }.collect { _messages.value = it }
         }
+        // 群角色用于置顶等管理员操作，置顶列表用于横幅与取消置顶。
+        viewModelScope.launch {
+            runCatching { api.groupInfo(chatId) }
+                .onSuccess { info ->
+                    _uiState.value = _uiState.value.copy(myRole = info.myRole)
+                }
+            refreshPins(chatId)
+        }
         loadMessages()
         initialMessageId?.let { jumpToMessage(it) }
+    }
+
+    /** 重新拉取置顶消息列表。 */
+    fun refreshPins(chatId: String? = null) {
+        val target = chatId ?: _chatId.value ?: return
+        viewModelScope.launch {
+            runCatching { api.pins(target) }
+                .onSuccess { resp ->
+                    _uiState.value = _uiState.value.copy(pins = resp.pins)
+                }
+        }
+    }
+
+    /** 置顶 / 取消置顶一条消息（仅管理员）。 */
+    fun togglePin(message: MessageDto, onDone: (String) -> Unit, onError: (String) -> Unit) {
+        val chatId = _chatId.value ?: return
+        val existing = _uiState.value.pins.firstOrNull { it.message.id == message.id }
+        viewModelScope.launch {
+            val result = if (existing == null) {
+                runCatching { api.createPin(chatId, message.id) }
+            } else {
+                runCatching {
+                    api.deletePin(chatId, existing.id)
+                    null
+                }
+            }
+            result
+                .onSuccess {
+                    refreshPins(chatId)
+                    onDone(
+                        getString(
+                            if (existing == null) {
+                                R.string.chat_pinned
+                            } else {
+                                R.string.chat_unpinned
+                            },
+                        ),
+                    )
+                }
+                .onFailure {
+                    onError(it.message ?: getString(R.string.chat_action_failed))
+                }
+        }
+    }
+
+    /** 收藏消息。 */
+    fun saveMessage(messageId: String, onDone: (String) -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            runCatching { api.saveMessage(messageId) }
+                .onSuccess { onDone(getString(R.string.chat_saved_message)) }
+                .onFailure { onError(it.message ?: getString(R.string.chat_action_failed)) }
+        }
+    }
+
+    /** 收藏 / 取消收藏贴纸。 */
+    fun setStickerFavorite(
+        stickerId: String,
+        favorite: Boolean,
+        onDone: (String) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        viewModelScope.launch {
+            val result = if (favorite) {
+                runCatching { api.favoriteSticker(stickerId) }
+            } else {
+                runCatching { api.unfavoriteSticker(stickerId) }
+            }
+            result
+                .onSuccess {
+                    onDone(
+                        getString(
+                            if (favorite) {
+                                R.string.chat_sticker_favorited
+                            } else {
+                                R.string.chat_sticker_unfavorited
+                            },
+                        ),
+                    )
+                }
+                .onFailure { onError(it.message ?: getString(R.string.chat_action_failed)) }
+        }
     }
 
     fun loadMessages() {
@@ -234,6 +326,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun myUser(): UserDto = AppGraph.session.snapshot().me?.let {
         UserDto(uid = it.uid, avatarUrl = it.avatarUrl, name = it.username)
     } ?: UserDto(uid = -1)
+
+    /** 恢复 / 保存当前会话的输入草稿。 */
+    suspend fun loadDraft(): String =
+        AppGraph.settings.chatDraft(_chatId.value.orEmpty(), _threadId.value)
+
+    suspend fun saveDraft(text: String) =
+        AppGraph.settings.saveChatDraft(_chatId.value.orEmpty(), _threadId.value, text)
 
     fun sendText(text: String) {
         val chatId = _chatId.value ?: return
@@ -668,6 +767,65 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 else api.removeReaction(chatId, message.id, emoji)
             }.onFailure {
                 store.onReactionUpdate(chatId, message.id, message.reactions)
+            }
+        }
+    }
+
+    /** 发送语音消息：上传音频附件后以 messageType=audio 发送。 */
+    fun sendVoice(
+        uriString: String,
+        mimeType: String,
+        fileName: String,
+        onDone: () -> Unit,
+    ) {
+        val chatId = _chatId.value ?: return
+        val threadId = _threadId.value
+        viewModelScope.launch {
+            try {
+                val context = getApplication<Application>()
+                val uri = Uri.parse(uriString)
+                val resolver = context.contentResolver
+                val name = fileName.ifBlank {
+                    queryDisplayName(uri) ?: "voice_${System.currentTimeMillis()}.m4a"
+                }
+                val fileSize = querySize(uri)
+                    ?: resolver.openInputStream(uri)?.use { it.readBytes().size.toLong() }
+                    ?: 0L
+                val upload = api.uploadUrl(
+                    UploadUrlRequest(
+                        filename = name,
+                        contentType = mimeType,
+                        size = fileSize,
+                    ),
+                )
+                api.uploadStream(
+                    uploadUrl = upload.uploadUrl,
+                    headers = upload.uploadHeaders,
+                    content = {
+                        resolver.openInputStream(uri)
+                            ?: throw IllegalStateException(getString(R.string.chat_read_file_failed))
+                    },
+                    contentType = mimeType,
+                    contentLength = fileSize.takeIf { it > 0 },
+                )
+                engine.sendMessage(
+                    chatId = chatId,
+                    text = null,
+                    replyRootId = threadId,
+                    attachmentIds = listOf(upload.attachmentId),
+                    messageType = "audio",
+                )
+                    .onFailure {
+                        _uiState.value = _uiState.value.copy(
+                            error = getString(R.string.chat_send_failed, it.message),
+                        )
+                    }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    error = getString(R.string.chat_send_failed, e.message),
+                )
+            } finally {
+                onDone()
             }
         }
     }

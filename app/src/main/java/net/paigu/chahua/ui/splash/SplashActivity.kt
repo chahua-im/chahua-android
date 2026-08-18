@@ -36,11 +36,14 @@ import net.paigu.chahua.R
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.data.AppLocale
 import net.paigu.chahua.ui.auth.AuthActivity
+import net.paigu.chahua.ui.chat.ChatActivity
 import net.paigu.chahua.ui.main.MainActivity
 import net.paigu.chahua.ui.theme.ChahuaTheme
 import net.paigu.chahua.ui.theme.GreenDark
 import net.paigu.chahua.ui.theme.GreenLight
 import net.paigu.chahua.ui.theme.Typography
+import java.nio.ByteBuffer
+import java.util.Base64
 
 /** 启动页：播放入场动画后，按会话状态进入主界面或登录页。 */
 class SplashActivity : ComponentActivity() {
@@ -61,6 +64,24 @@ class SplashActivity : ComponentActivity() {
 
     private suspend fun navigateToNext() {
         val hasSession = AppGraph.session.current().hasSession
+        val permalink = parsePermalink(intent)
+        if (hasSession && permalink != null) {
+            val (chatId, messageId) = permalink
+            val threadId = runCatching {
+                AppGraph.api.message(chatId, messageId)
+            }.getOrNull()?.replyRootId
+            startActivity(
+                Intent(this, ChatActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                    .putExtra("chat_id", chatId)
+                    .putExtra("title", chatId)
+                    .putExtra("message_id", messageId)
+                    .putExtra("thread_root_id", threadId)
+                    .putExtra("reply_count", 0L),
+            )
+            finish()
+            return
+        }
         val target = if (hasSession) MainActivity::class.java else AuthActivity::class.java
         startActivity(
             Intent(this, target).addFlags(
@@ -68,6 +89,20 @@ class SplashActivity : ComponentActivity() {
             ),
         )
         finish()
+    }
+
+    /** 解析 /m/{base64url(chatId|messageId)} 格式的消息链接。 */
+    private fun parsePermalink(intent: Intent?): Pair<String, String>? {
+        if (intent?.action != Intent.ACTION_VIEW) return null
+        val path = intent.data?.path ?: return null
+        if (!path.startsWith("/m/")) return null
+        val encoded = path.removePrefix("/m/")
+        return runCatching {
+            val bytes = Base64.getUrlDecoder().decode(encoded)
+            if (bytes.size != 16) return@runCatching null
+            val buffer = ByteBuffer.wrap(bytes)
+            buffer.long.toString() to buffer.long.toString()
+        }.getOrNull()
     }
 }
 

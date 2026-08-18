@@ -15,6 +15,7 @@ import kotlinx.coroutines.withContext
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.data.models.StickerPackDetailResponse
 import net.paigu.chahua.data.models.StickerPackSummaryDto
+import net.paigu.chahua.data.models.UpdateStickerPackOrderItemBody
 
 data class StickerPacksUiState(
     val packs: List<StickerPackSummaryDto> = emptyList(),
@@ -179,6 +180,35 @@ class StickersViewModel(application: Application) : AndroidViewModel(application
 
     fun dismissDetailError() {
         _detailState.value = _detailState.value.copy(error = null)
+    }
+
+    /** 把一个贴纸包移动到排序最前（同步到服务端）。 */
+    fun movePackToTop(packId: String, onError: (String) -> Unit = {}) {
+        viewModelScope.launch {
+            val current = AppGraph.session.snapshot().me?.stickerPackOrder.orEmpty()
+            val maxLastUsed = current.maxOfOrNull { it.lastUsedOn } ?: 0L
+            val next = listOf(
+                net.paigu.chahua.data.models.StickerPackOrderItemDto(
+                    stickerPackId = packId,
+                    lastUsedOn = maxLastUsed + 1L,
+                ),
+            ) + current.filterNot { it.stickerPackId == packId }
+            runCatching {
+                api.updateStickerPackOrder(
+                    next.map {
+                        UpdateStickerPackOrderItemBody(
+                            stickerPackId = it.stickerPackId,
+                            lastUsedOn = it.lastUsedOn,
+                        )
+                    },
+                )
+            }
+                .onSuccess {
+                    runCatching { AppGraph.session.setMe(AppGraph.api.me()) }
+                    loadPacks()
+                }
+                .onFailure { onError(it.message ?: "failed") }
+        }
     }
 
     private fun meUid(): Int = AppGraph.session.snapshot().me?.uid ?: -1

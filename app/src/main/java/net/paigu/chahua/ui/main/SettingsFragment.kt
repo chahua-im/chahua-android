@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -45,6 +46,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -76,10 +79,13 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -95,6 +101,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
 import androidx.fragment.app.Fragment
@@ -109,18 +116,24 @@ import net.paigu.chahua.data.LogLevelOption
 import net.paigu.chahua.data.SessionManager
 import net.paigu.chahua.data.ThemeColorOption
 import net.paigu.chahua.data.models.StickerPackSummaryDto
+import net.paigu.chahua.data.models.SavedMessageDto
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.ui.auth.AuthActivity
+import net.paigu.chahua.ui.chat.ChatActivity
 import net.paigu.chahua.ui.common.AuthAsyncImage
 import net.paigu.chahua.ui.common.EmptyState
 import net.paigu.chahua.ui.common.UserAvatar
+import net.paigu.chahua.ui.common.formatListTime
+import net.paigu.chahua.ui.common.messagePreviewText
 import net.paigu.chahua.ui.theme.ChahuaTheme
 import java.text.BreakIterator
 import java.util.Locale
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 class SettingsFragment : Fragment() {
     private val viewModel: SettingsViewModel by viewModels()
     private val stickersViewModel: StickersViewModel by viewModels()
+    private val savedMessagesViewModel: SavedMessagesViewModel by viewModels()
 
     override fun onCreateView(
         inflater: android.view.LayoutInflater,
@@ -142,6 +155,7 @@ class SettingsFragment : Fragment() {
                         SettingsScreen(
                             viewModel = viewModel,
                             stickersViewModel = stickersViewModel,
+                            savedMessagesViewModel = savedMessagesViewModel,
                             onLoggedOut = {
                                 startActivity(
                                     Intent(requireContext(), AuthActivity::class.java).addFlags(
@@ -175,6 +189,7 @@ class SettingsFragment : Fragment() {
 private enum class SettingsPage(val titleRes: Int) {
     HOME(R.string.tab_settings),
     GENERAL(R.string.settings_general),
+    SAVED_MESSAGES(R.string.settings_saved_messages),
     CACHE(R.string.settings_cache),
     LANGUAGE(R.string.settings_language),
     APPEARANCE(R.string.settings_appearance),
@@ -188,6 +203,7 @@ private enum class SettingsPage(val titleRes: Int) {
 private fun SettingsScreen(
     viewModel: SettingsViewModel,
     stickersViewModel: StickersViewModel,
+    savedMessagesViewModel: SavedMessagesViewModel,
     onLoggedOut: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -199,6 +215,8 @@ private fun SettingsScreen(
     var selectedPackId by rememberSaveable { mutableStateOf<String?>(null) }
 
     val page = remember(pageName) { SettingsPage.valueOf(pageName) }
+    // BackHandler 的回调可能捕获到旧的一次组合，这里始终读取最新页面状态。
+    val currentPage by rememberUpdatedState(page)
 
     LaunchedEffect(uiState.loggedOut) {
         if (uiState.loggedOut) onLoggedOut()
@@ -211,9 +229,10 @@ private fun SettingsScreen(
     // 系统返回键与顶栏返回箭头行为一致：子页面逐级返回，设置主页不拦截，
     // 由 MainActivity 负责切回主页（聊天）。
     fun navigateBack() {
-        when (page) {
+        when (currentPage) {
             SettingsPage.GENERAL,
             SettingsPage.APPEARANCE,
+            SettingsPage.SAVED_MESSAGES,
             SettingsPage.STICKERS,
             SettingsPage.NOTIFICATIONS,
             SettingsPage.DEVELOPER -> navigate(SettingsPage.HOME)
@@ -228,7 +247,7 @@ private fun SettingsScreen(
     }
 
     BackHandler(
-        enabled = page != SettingsPage.HOME,
+        enabled = currentPage != SettingsPage.HOME,
         onBack = ::navigateBack,
     )
 
@@ -237,6 +256,7 @@ private fun SettingsScreen(
             sessionState = sessionState,
             developerEnabled = settings.developerEnabled,
             onOpenGeneral = { navigate(SettingsPage.GENERAL) },
+            onOpenSavedMessages = { navigate(SettingsPage.SAVED_MESSAGES) },
             onOpenAppearance = { navigate(SettingsPage.APPEARANCE) },
             onOpenStickers = { navigate(SettingsPage.STICKERS) },
             onOpenNotifications = { navigate(SettingsPage.NOTIFICATIONS) },
@@ -253,6 +273,34 @@ private fun SettingsScreen(
             onOpenCache = { navigate(SettingsPage.CACHE) },
             onEnterToSendChange = viewModel::setEnterToSend,
             onShowAvatarsInMessagesChange = viewModel::setShowAvatarsInMessages,
+        )
+        SettingsPage.SAVED_MESSAGES -> SavedMessagesScreen(
+            viewModel = savedMessagesViewModel,
+            onBack = { navigate(SettingsPage.HOME) },
+            onOpenMessage = { saved ->
+                if (saved.canLocateContext) {
+                    val title = saved.chat?.name ?: saved.originalChatId
+                    val threadRootId = saved.originalThreadRootId
+                    val intent = if (threadRootId != null) {
+                        ChatActivity.createThreadIntent(
+                            context = context,
+                            chatId = saved.originalChatId,
+                            title = title,
+                            threadRootId = threadRootId,
+                            replyCount = 0L,
+                            messageId = saved.originalMessageId,
+                        )
+                    } else {
+                        ChatActivity.createIntent(
+                            context = context,
+                            chatId = saved.originalChatId,
+                            title = title,
+                            messageId = saved.originalMessageId,
+                        )
+                    }
+                    context.startActivity(intent)
+                }
+            },
         )
         SettingsPage.CACHE -> CacheScreen(
             viewModel = viewModel,
@@ -324,6 +372,7 @@ private fun HomeScreen(
     sessionState: SessionManager.SessionState,
     developerEnabled: Boolean,
     onOpenGeneral: () -> Unit,
+    onOpenSavedMessages: () -> Unit,
     onOpenAppearance: () -> Unit,
     onOpenStickers: () -> Unit,
     onOpenNotifications: () -> Unit,
@@ -378,6 +427,12 @@ private fun HomeScreen(
                     icon = Icons.Filled.Settings,
                     title = stringResource(R.string.settings_general),
                     onClick = onOpenGeneral,
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                SettingsEntryRow(
+                    icon = Icons.Filled.Bookmark,
+                    title = stringResource(R.string.settings_saved_messages),
+                    onClick = onOpenSavedMessages,
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 SettingsEntryRow(
@@ -1055,6 +1110,11 @@ private fun StickerPacksScreen(
                                     pack = pack,
                                     owned = pack.id in packsState.ownedIds,
                                     onClick = { onOpenPack(pack.id) },
+                                    onMoveTop = {
+                                        stickersViewModel.movePackToTop(pack.id) { err ->
+                                            Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
                                 )
                                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                             }
@@ -1149,6 +1209,7 @@ private fun StickerPackRow(
     pack: StickerPackSummaryDto,
     owned: Boolean,
     onClick: () -> Unit,
+    onMoveTop: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -1196,6 +1257,13 @@ private fun StickerPackRow(
                 text = stringResource(R.string.settings_pack_sticker_count, pack.stickerCount),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        IconButton(onClick = onMoveTop) {
+            Icon(
+                imageVector = Icons.Filled.ArrowUpward,
+                contentDescription = stringResource(R.string.settings_pack_move_top),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Icon(
@@ -1948,6 +2016,120 @@ private fun DeveloperDetailRow(
                     contentDescription = stringResource(R.string.settings_copy),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+        }
+    }
+}
+
+/** 全局收藏消息页：点击可跳回原消息，右侧可取消收藏。 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SavedMessagesScreen(
+    viewModel: SavedMessagesViewModel,
+    onBack: () -> Unit,
+    onOpenMessage: (SavedMessageDto) -> Unit,
+) {
+    val state by viewModel.uiState.collectAsState()
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(Unit) {
+        viewModel.load()
+    }
+
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            lastVisible >= info.totalItemsCount - 3
+        }
+    }
+    LaunchedEffect(listState) {
+        snapshotFlow { shouldLoadMore }
+            .distinctUntilChanged()
+            .collect { loadMore ->
+                if (loadMore) viewModel.loadOlder()
+            }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.settings_saved_messages)) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.settings_back),
+                        )
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+            when {
+                state.loading && state.items.isEmpty() -> {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                }
+                state.items.isEmpty() -> {
+                    Text(
+                        text = stringResource(R.string.settings_saved_messages_empty),
+                        modifier = Modifier.align(Alignment.Center),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                else -> {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        items(
+                            items = state.items,
+                            key = { it.id },
+                        ) { item ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onOpenMessage(item) }
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = listOf(
+                                            item.sender?.name,
+                                            item.chat?.name,
+                                        ).filterNotNull().joinToString(" · "),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                    Text(
+                                        text = messagePreviewText(item.message, item.messageType),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        text = formatListTime(item.savedAt ?: item.originalCreatedAt),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                TextButton(
+                                    onClick = { viewModel.remove(item) },
+                                    enabled = state.workingId != item.id,
+                                ) {
+                                    Text(stringResource(R.string.settings_unsave))
+                                }
+                            }
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        }
+                    }
+                }
             }
         }
     }

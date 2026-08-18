@@ -51,6 +51,9 @@
     <string name="settings_logout">登出</string>
 
     <string name="settings_general">通用</string>
+    <string name="settings_saved_messages">收藏訊息</string>
+    <string name="settings_saved_messages_empty">暫無收藏訊息</string>
+    <string name="settings_unsave">取消收藏</string>
     <string name="settings_appearance">外觀</string>
     <string name="settings_emoji_stickers">表情與貼紙</string>
     <string name="settings_notifications">通知</string>
@@ -132,6 +135,7 @@
     <string name="settings_pack_name_hint">輸入表情包名稱</string>
     <string name="settings_pack_owned">我建立的</string>
     <string name="settings_pack_sticker_count">%1$d 張貼紙</string>
+    <string name="settings_pack_move_top">移到最前</string>
     <string name="settings_packs_empty">暫無收藏的表情包</string>
     <string name="settings_pack_empty">這個表情包還沒有貼紙</string>
     <string name="settings_add_sticker">新增貼紙</string>
@@ -196,6 +200,12 @@
     <string name="chat_unarchive">取消封存</string>
     <string name="chat_cancel_reply">取消回覆</string>
     <string name="chat_cancel_edit">取消修改</string>
+    <string name="chat_cancel">取消</string>
+    <string name="chat_create">建立</string>
+    <string name="chat_create_chat">新群組</string>
+    <string name="chat_create_name_hint">群組名稱</string>
+    <string name="chat_create_failed">建立群組失敗</string>
+    <string name="chat_create_permission_denied">沒有建立群組的權限</string>
     <string name="chat_reply_preview">回覆 %1$s：%2$s</string>
     <string name="chat_reply_to">回覆</string>
     <string name="chat_reply_message">訊息</string>
@@ -216,6 +226,22 @@
     <string name="chat_link_copied">訊息連結已複製</string>
     <string name="chat_recall">撤回</string>
     <string name="chat_save">儲存</string>
+    <string name="chat_saved_message">訊息已收藏</string>
+    <string name="chat_pin">置頂</string>
+    <string name="chat_unpin">取消置頂</string>
+    <string name="chat_pinned">訊息已置頂</string>
+    <string name="chat_unpinned">已取消置頂</string>
+    <string name="chat_pin_list">置頂訊息</string>
+    <string name="chat_pin_empty">暫無置頂訊息</string>
+    <string name="chat_pinned_message">置頂的訊息</string>
+    <string name="chat_sticker_message">貼圖</string>
+    <string name="chat_attachment_message">附件</string>
+    <string name="chat_unknown_sender">使用者</string>
+    <string name="chat_close">關閉</string>
+    <string name="chat_sticker_favorite">收藏貼圖</string>
+    <string name="chat_sticker_unfavorite">取消收藏貼圖</string>
+    <string name="chat_sticker_favorited">已收藏貼圖</string>
+    <string name="chat_sticker_unfavorited">已取消收藏貼圖</string>
     <string name="chat_delete">刪除</string>
     <string name="chat_sending">傳送中…</string>
     <string name="chat_empty">暫無訊息，打聲招呼吧！</string>
@@ -223,6 +249,10 @@
     <string name="chat_image">[圖片]</string>
     <string name="chat_video">[影片]</string>
     <string name="chat_audio">[語音]</string>
+    <string name="chat_voice_record">錄製語音</string>
+    <string name="chat_voice_stop">停止錄製</string>
+    <string name="chat_voice_permission_denied">需要麥克風權限才能錄音</string>
+    <string name="chat_voice_start_failed">開始錄音失敗</string>
     <string name="chat_file">[檔案]</string>
     <string name="chat_sticker">[貼圖]</string>
     <string name="chat_message">[訊息]</string>
@@ -233,6 +263,20 @@
     <string name="chat_read_image_failed">無法讀取所選圖片</string>
 
     <string name="group_info_title">群組資訊</string>
+    <string name="group_edit">編輯群組</string>
+    <string name="group_save">儲存</string>
+    <string name="group_saved_changes">修改已儲存</string>
+    <string name="group_name">群組名稱</string>
+    <string name="group_description">群組簡介</string>
+    <string name="group_name_required">群組名稱不可為空</string>
+    <string name="group_change_avatar">更換頭像</string>
+    <string name="group_invites">邀請</string>
+    <string name="group_invite_create">產生邀請</string>
+    <string name="group_invite_created">已產生邀請，連結已複製</string>
+    <string name="group_invite_created_at">建立於 %1$s</string>
+    <string name="group_invites_empty">暫無邀請</string>
+    <string name="group_invite_copy">複製邀請連結</string>
+    <string name="group_invite_revoke">撤銷邀請</string>
     <string name="group_search">搜尋</string>
     <string name="group_saved">收藏</string>
     <string name="group_mute">靜音</string>
