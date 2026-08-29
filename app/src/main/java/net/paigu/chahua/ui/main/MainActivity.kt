@@ -1,6 +1,7 @@
 package net.paigu.chahua.ui.main
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.Context
 import android.content.res.Configuration
 import android.os.Build
@@ -18,8 +19,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.fragment.app.FragmentActivity
 import androidx.window.embedding.SplitController
+import kotlinx.coroutines.launch
 import net.paigu.chahua.R
 import net.paigu.chahua.core.AppGraph
+import net.paigu.chahua.core.BatteryOptimization
 import net.paigu.chahua.data.AppLocale
 import net.paigu.chahua.ui.theme.ChahuaTheme
 
@@ -100,6 +103,7 @@ class MainActivity : FragmentActivity() {
         if (AppGraph.settings.snapshot().persistentNotificationEnabled) {
             AppGraph.startMessaging(this)
         }
+        maybeShowBatteryOptimizationPrompt()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -142,6 +146,26 @@ class MainActivity : FragmentActivity() {
         if (Build.VERSION.SDK_INT >= 33) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+    }
+
+    /** 启动时检测电池优化：未豁免且用户未选择“永久忽略”时弹窗提示。 */
+    private fun maybeShowBatteryOptimizationPrompt() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        if (BatteryOptimization.isIgnoringBatteryOptimizations(this)) return
+        if (AppGraph.settings.snapshot().batteryOptimizationPromptDismissed) return
+        AlertDialog.Builder(this)
+            .setTitle(R.string.battery_optimization_dialog_title)
+            .setMessage(R.string.battery_optimization_dialog_message)
+            .setPositiveButton(R.string.battery_optimization_dialog_forever) { _, _ ->
+                // 永久忽略：记住选择不再提示，并立即调起系统授权。
+                AppGraph.scope.launch {
+                    AppGraph.settings.setBatteryOptimizationPromptDismissed(true)
+                }
+                BatteryOptimization.requestIgnore(this)
+            }
+            .setNegativeButton(R.string.battery_optimization_dialog_ignore, null)
+            .setNeutralButton(R.string.battery_optimization_dialog_continue, null)
+            .show()
     }
 
     companion object {

@@ -372,6 +372,7 @@ private fun SettingsScreen(
             settings = settings,
             onNotificationsEnabledChange = viewModel::setNotificationsEnabled,
             onPersistentNotificationEnabledChange = viewModel::setPersistentNotificationEnabled,
+            onRequestIgnoreBatteryOptimization = viewModel::requestIgnoreBatteryOptimization,
             onBack = { navigate(SettingsPage.HOME) },
         )
         SettingsPage.FRIEND_VERIFICATION -> FriendVerificationScreen(

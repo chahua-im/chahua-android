@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.paigu.chahua.core.AppGraph
+import net.paigu.chahua.core.BatteryOptimization
 import net.paigu.chahua.R
 import java.io.File
 
@@ -140,6 +141,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 AppGraph.stopMessaging(getApplication())
             }
         }
+    }
+
+    /** 调起系统授权框，请求允许应用忽略电池优化。 */
+    fun requestIgnoreBatteryOptimization() {
+        BatteryOptimization.requestIgnore(getApplication())
     }
 
     fun setEnterToSend(enabled: Boolean) {

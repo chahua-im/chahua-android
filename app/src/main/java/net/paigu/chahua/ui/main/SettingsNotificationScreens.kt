@@ -115,6 +115,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.window.embedding.SplitController
 import kotlin.math.roundToInt
 import kotlin.math.atan2
@@ -132,6 +133,7 @@ import net.paigu.chahua.data.ThemeModeOption
 import net.paigu.chahua.data.models.StickerPackSummaryDto
 import net.paigu.chahua.data.models.SavedMessageDto
 import net.paigu.chahua.core.AppGraph
+import net.paigu.chahua.core.BatteryOptimization
 import net.paigu.chahua.ui.auth.AuthActivity
 import net.paigu.chahua.ui.chat.ChatActivity
 import net.paigu.chahua.ui.common.AuthAsyncImage
@@ -150,13 +152,22 @@ internal fun NotificationsScreen(
     settings: net.paigu.chahua.data.AppSettings,
     onNotificationsEnabledChange: (Boolean) -> Unit,
     onPersistentNotificationEnabledChange: (Boolean) -> Unit,
+    onRequestIgnoreBatteryOptimization: () -> Unit,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
     var permissionGranted by remember { mutableStateOf(false) }
+    var batteryOptimizationIgnored by remember {
+        mutableStateOf(BatteryOptimization.isIgnoringBatteryOptimizations(context))
+    }
 
     LaunchedEffect(Unit) {
         permissionGranted = NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }
+    // 从系统授权框返回后刷新电池优化状态。
+    LifecycleResumeEffect(Unit) {
+        batteryOptimizationIgnored = BatteryOptimization.isIgnoringBatteryOptimizations(context)
+        onPauseOrDispose { }
     }
 
     Scaffold(
@@ -205,6 +216,53 @@ internal fun NotificationsScreen(
                         checked = settings.notificationsEnabled,
                         onCheckedChange = onNotificationsEnabledChange,
                     )
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.settings_battery_optimization),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_battery_optimization_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                    Text(
+                        text = stringResource(
+                            if (batteryOptimizationIgnored) {
+                                R.string.settings_battery_optimization_ignored
+                            } else {
+                                R.string.settings_battery_optimization_not_ignored
+                            },
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (batteryOptimizationIgnored) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        },
+                    )
+                }
+                if (!batteryOptimizationIgnored) {
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    TextButton(
+                        onClick = onRequestIgnoreBatteryOptimization,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.settings_battery_optimization_enable))
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
