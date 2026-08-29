@@ -96,6 +96,7 @@ import net.paigu.chahua.ui.common.messagePreviewWithSender
 import net.paigu.chahua.ui.group.GroupInfoActivity
 import net.paigu.chahua.ui.invite.InviteRedeemActivity
 import net.paigu.chahua.ui.media.MediaViewerActivity
+import net.paigu.chahua.ui.media.MediaViewerItem
 import net.paigu.chahua.ui.theme.LocalAppSettings
 import net.paigu.chahua.ui.theme.ChahuaTheme
 import kotlinx.coroutines.launch
@@ -168,9 +169,9 @@ class ChatFragment : Fragment() {
                                 ),
                             )
                         },
-                        onOpenMedia = { url, kind, fileName ->
+                        onOpenMedia = { items, index ->
                             startActivity(
-                                MediaViewerActivity.createIntent(requireContext(), url, kind, fileName),
+                                MediaViewerActivity.createIntent(requireContext(), items, index),
                             )
                         },
                         onOpenInvite = {
@@ -196,7 +197,7 @@ fun ChatContent(
     onOpenChat: (chatId: String, title: String) -> Unit,
     onOpenThread: (ThreadDto) -> Unit,
     onOpenArchivedThread: (ThreadDto) -> Unit,
-    onOpenMedia: (url: String, kind: String, fileName: String?) -> Unit,
+    onOpenMedia: (items: List<MediaViewerItem>, index: Int) -> Unit,
     onOpenInvite: () -> Unit,
 ) {
     // 支持 Activity Embedding 的设备由系统负责左右分栏：这里只渲染聊天列表，
@@ -241,7 +242,7 @@ private fun WideChatLayout(
     selectedTab: Int,
     onSelectTab: (Int) -> Unit,
     onOpenArchivedThread: (ThreadDto) -> Unit,
-    onOpenMedia: (url: String, kind: String, fileName: String?) -> Unit,
+    onOpenMedia: (items: List<MediaViewerItem>, index: Int) -> Unit,
     onOpenInvite: () -> Unit,
 ) {
     val context = LocalContext.current

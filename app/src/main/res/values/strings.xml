@@ -109,7 +109,7 @@
     <string name="settings_notifications_enabled">New message notifications</string>
     <string name="settings_notifications_desc">Show notifications for new messages while the app is in the background</string>
     <string name="settings_notifications_persistent">Persistent notification</string>
-    <string name="settings_notifications_persistent_desc">Keep a notification in the status bar to keep the app alive in the background</string>
+    <string name="settings_notifications_persistent_desc">When off, the persistent notification is hidden; background message delivery, online status and latency display are unaffected</string>
     <string name="settings_battery_optimization">Ignore battery optimization</string>
     <string name="settings_battery_optimization_desc">Allow the app to stay active in the background for reliable message delivery</string>
     <string name="settings_battery_optimization_ignored">Ignored</string>

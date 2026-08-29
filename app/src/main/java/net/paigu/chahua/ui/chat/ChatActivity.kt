@@ -184,6 +184,7 @@ import net.paigu.chahua.ui.chat.components.chatItemKey
 import net.paigu.chahua.ui.group.GroupInfoActivity
 import net.paigu.chahua.ui.main.MainActivity
 import net.paigu.chahua.ui.media.MediaViewerActivity
+import net.paigu.chahua.ui.media.MediaViewerItem
 import net.paigu.chahua.ui.media.MediaSaver
 import net.paigu.chahua.ui.theme.ChahuaTheme
 import net.paigu.chahua.ui.theme.LocalAppSettings
@@ -283,9 +284,9 @@ class ChatActivity : ComponentActivity() {
                             ),
                         )
                     },
-                    onOpenMedia = { url, kind, fileName ->
+                    onOpenMedia = { items, index ->
                         startActivity(
-                            MediaViewerActivity.createIntent(this, url, kind, fileName),
+                            MediaViewerActivity.createIntent(this, items, index),
                         )
                     },
                 )
@@ -316,7 +317,7 @@ internal fun ChatScreen(
     onOpenThread: (String) -> Unit = {},
     threadArchived: Boolean = false,
     onArchiveDone: () -> Unit = {},
-    onOpenMedia: (url: String, kind: String, fileName: String?) -> Unit,
+    onOpenMedia: (items: List<MediaViewerItem>, index: Int) -> Unit,
     consumeNavigationBarsInset: Boolean = true,
 ) {
     val uiState by viewModel.uiState.collectAsState()

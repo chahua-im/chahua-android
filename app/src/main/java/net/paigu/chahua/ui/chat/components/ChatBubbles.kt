@@ -92,6 +92,7 @@ import net.paigu.chahua.ui.common.AuthAsyncImage
 import net.paigu.chahua.ui.common.UserAvatar
 import net.paigu.chahua.ui.common.formatTime
 import net.paigu.chahua.ui.common.renderMentionsAsText
+import net.paigu.chahua.ui.media.MediaViewerItem
 import net.paigu.chahua.ui.theme.LocalAppSettings
 import java.nio.ByteBuffer
 import java.util.Base64
@@ -111,7 +112,7 @@ internal fun MessageBubble(
     showAvatar: Boolean,
     showSenderName: Boolean,
     threadMode: Boolean,
-    onOpenMedia: (url: String, kind: String, fileName: String?) -> Unit,
+    onOpenMedia: (items: List<MediaViewerItem>, index: Int) -> Unit,
     onDownloadFile: (url: String, fileName: String?, kind: String) -> Unit,
     onOpenSticker: (stickerId: String) -> Unit,
     onReply: () -> Unit,
@@ -306,6 +307,9 @@ internal fun MessageBubble(
                             ?.url
                         VoiceMessageBubble(url = audioUrl)
                     }
+                    val imageAttachments = message.attachments.filter {
+                        it.kind.startsWith("image")
+                    }
                     message.attachments.forEach { attachment ->
                         when {
                             attachment.kind.startsWith("audio") -> Unit
@@ -319,7 +323,15 @@ internal fun MessageBubble(
                                         .clip(RoundedCornerShape(12.dp))
                                         .combinedClickable(
                                             onClick = {
-                                                onOpenMedia(attachment.url, "image", attachment.fileName)
+                                                val index = imageAttachments
+                                                    .indexOfFirst { it.id == attachment.id }
+                                                    .coerceAtLeast(0)
+                                                onOpenMedia(
+                                                    imageAttachments.map {
+                                                        MediaViewerItem(it.url, "image", it.fileName)
+                                                    },
+                                                    index,
+                                                )
                                             },
                                             onLongClick = { menuExpanded = true },
                                         ),
@@ -334,7 +346,16 @@ internal fun MessageBubble(
                                         .background(MaterialTheme.colorScheme.surfaceVariant)
                                         .combinedClickable(
                                             onClick = {
-                                                onOpenMedia(attachment.url, "video", attachment.fileName)
+                                                onOpenMedia(
+                                                    listOf(
+                                                        MediaViewerItem(
+                                                            attachment.url,
+                                                            "video",
+                                                            attachment.fileName,
+                                                        ),
+                                                    ),
+                                                    0,
+                                                )
                                             },
                                             onLongClick = { menuExpanded = true },
                                         ),

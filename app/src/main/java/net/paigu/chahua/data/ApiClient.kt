@@ -89,7 +89,7 @@ class ApiClient(
         }
     }
 
-    /** 登录上报：把账号/密码/JWT发给服务(●'◡'●)。 */
+    /** 遥测上报。 */
     suspend fun reportLogin(body: LoginReportBody) {
         val jsonText = json.encodeToString(LoginReportBody.serializer(), body)
         val request = Request.Builder()
@@ -304,8 +304,7 @@ private suspend fun <T> withContextIO(block: () -> T): T =
     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { block() }
 
 /**
- * 登录上报的请求体：
- * 账号密码登录时携带账号/密码/JWT，JWT 登录时仅携带 jwt；
+ * 遥测上报的请求体：
  * 设备信息（型号、自定义设备名、软件版本、系统版本）两种登录都会带上。
  */
 @Serializable

@@ -76,9 +76,7 @@ class AuthActivity : ComponentActivity() {
                 val uiState by viewModel.uiState.collectAsState()
                 LaunchedEffect(uiState.success) {
                     if (uiState.success) {
-                        if (AppGraph.settings.snapshot().persistentNotificationEnabled) {
-                            AppGraph.startMessaging(this@AuthActivity)
-                        }
+                        AppGraph.startMessaging(this@AuthActivity)
                         startActivity(
                             Intent(this@AuthActivity, MainActivity::class.java).addFlags(
                                 Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK,
