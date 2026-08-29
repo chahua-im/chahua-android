@@ -4,6 +4,8 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.lerp
 import net.paigu.chahua.data.ThemeColorOption
 
 // 自定义兜底配色（Android 12 以下或系统未启用动态取色时使用）
@@ -177,6 +179,7 @@ fun ThemeColorOption.lightScheme(): ColorScheme = when (this) {
     ThemeColorOption.ORANGE -> OrangeLight
     ThemeColorOption.PINK -> PinkLight
     ThemeColorOption.SYSTEM -> GreenLight
+    ThemeColorOption.CUSTOM -> GreenLight
 }
 
 fun ThemeColorOption.darkScheme(): ColorScheme = when (this) {
@@ -186,4 +189,41 @@ fun ThemeColorOption.darkScheme(): ColorScheme = when (this) {
     ThemeColorOption.ORANGE -> OrangeDark
     ThemeColorOption.PINK -> PinkDark
     ThemeColorOption.SYSTEM -> GreenDark
+    ThemeColorOption.CUSTOM -> GreenDark
+}
+
+/** 由色轮选中的种子色生成 Material3 配色。 */
+fun customColorScheme(seed: Color, dark: Boolean): ColorScheme {
+    return if (dark) {
+        darkColorScheme(
+            primary = lerp(seed, Color.White, 0.28f),
+            onPrimary = lerp(seed, Color.Black, 0.55f),
+            primaryContainer = lerp(seed, Color.Black, 0.68f),
+            onPrimaryContainer = lerp(seed, Color.White, 0.72f),
+            secondary = lerp(seed, Color.White, 0.45f),
+            onSecondary = lerp(seed, Color.Black, 0.6f),
+            secondaryContainer = lerp(seed, Color.Black, 0.72f),
+            onSecondaryContainer = lerp(seed, Color.White, 0.8f),
+            tertiary = Color(0xFF80CBC4),
+            onTertiary = Color(0xFF00332E),
+            tertiaryContainer = Color(0xFF00695C),
+            onTertiaryContainer = Color(0xFFB2DFDB),
+        )
+    } else {
+        val onPrimary = if (seed.luminance() > 0.5f) Color(0xFF1B1B1F) else Color.White
+        lightColorScheme(
+            primary = seed,
+            onPrimary = onPrimary,
+            primaryContainer = lerp(seed, Color.White, 0.78f),
+            onPrimaryContainer = lerp(seed, Color.Black, 0.5f),
+            secondary = lerp(seed, Color.Black, 0.22f),
+            onSecondary = Color.White,
+            secondaryContainer = lerp(seed, Color.White, 0.8f),
+            onSecondaryContainer = lerp(seed, Color.Black, 0.55f),
+            tertiary = Color(0xFF00838F),
+            onTertiary = Color.White,
+            tertiaryContainer = Color(0xFFB2EBF2),
+            onTertiaryContainer = Color(0xFF00363D),
+        )
+    }
 }

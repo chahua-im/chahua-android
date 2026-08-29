@@ -5,10 +5,16 @@ import net.paigu.chahua.data.models.AuthTokenResponse
 import net.paigu.chahua.data.models.CreateStickerPackBody
 import net.paigu.chahua.data.models.CreateChatBody
 import net.paigu.chahua.data.models.CreateChatResponse
+import net.paigu.chahua.data.models.CreateFriendRequestBody
 import net.paigu.chahua.data.models.CreateInviteBody
 import net.paigu.chahua.data.models.CreateMessageBody
 import net.paigu.chahua.data.models.CreatePinBody
 import net.paigu.chahua.data.models.FavoriteStickerListResponse
+import net.paigu.chahua.data.models.FriendAddInfoResponse
+import net.paigu.chahua.data.models.FriendRequestDto
+import net.paigu.chahua.data.models.FriendSettingsResponse
+import net.paigu.chahua.data.models.ListFriendRequestHistoryResponse
+import net.paigu.chahua.data.models.ListFriendsResponse
 import net.paigu.chahua.data.models.GroupAvatarUploadUrlRequest
 import net.paigu.chahua.data.models.GroupAvatarUploadUrlResponse
 import net.paigu.chahua.data.models.GroupInfoDto
@@ -29,6 +35,7 @@ import net.paigu.chahua.data.models.MessageDto
 import net.paigu.chahua.data.models.MuteBody
 import net.paigu.chahua.data.models.MuteResponse
 import net.paigu.chahua.data.models.PinDto
+import net.paigu.chahua.data.models.PendingFriendRequestCountResponse
 import net.paigu.chahua.data.models.RedeemInviteBody
 import net.paigu.chahua.data.models.RedeemInviteResponse
 import net.paigu.chahua.data.models.ReactionDetailResponse
@@ -37,11 +44,13 @@ import net.paigu.chahua.data.models.SendInviteMessageBody
 import net.paigu.chahua.data.models.StickerPackDetailResponse
 import net.paigu.chahua.data.models.StickerPackListResponse
 import net.paigu.chahua.data.models.StickerPackSummaryDto
+import net.paigu.chahua.data.models.StickerDetailResponse
 import net.paigu.chahua.data.models.StickerSummaryDto
 import net.paigu.chahua.data.models.TicketResponse
 import net.paigu.chahua.data.models.UpdateGroupBody
 import net.paigu.chahua.data.models.UpdateStickerPackOrderItemBody
 import net.paigu.chahua.data.models.UpdateStickerPackOrderRequest
+import net.paigu.chahua.data.models.UpdateFriendSettingsBody
 import net.paigu.chahua.data.models.UploadUrlRequest
 import net.paigu.chahua.data.models.UploadUrlResponse
 
@@ -307,8 +316,17 @@ class ChatApi(
     suspend fun stickerPackDetail(packId: String): StickerPackDetailResponse =
         client.get("stickers/packs/$packId")
 
+    /** 单张贴纸详情（含所属贴纸包），用于聊天内贴纸预览。 */
+    suspend fun stickerDetail(stickerId: String): StickerDetailResponse =
+        client.get("stickers/$stickerId")
+
     suspend fun createStickerPack(name: String, description: String? = null): StickerPackSummaryDto =
         client.post("stickers/packs", body = CreateStickerPackBody(name = name, description = description))
+
+    /** 订阅（收藏）一个贴纸包。 */
+    suspend fun subscribeStickerPack(packId: String) {
+        client.noContent("PUT", "stickers/packs/$packId/subscription")
+    }
 
     /** 取消收藏（退订）贴纸包。 */
     suspend fun unsubscribeStickerPack(packId: String) {
@@ -355,6 +373,44 @@ class ChatApi(
             UpdateStickerPackOrderRequest(order = order),
         )
     }
+
+    // ---- 好友 ----
+
+    /** 当前用户的好友验证设置。 */
+    suspend fun friendSettings(): FriendSettingsResponse =
+        client.get("friends/me/settings")
+
+    /** 更新好友验证设置（mode: direct | need_message | question | forbid）。 */
+    suspend fun updateFriendSettings(mode: String, question: String? = null): FriendSettingsResponse =
+        client.put("friends/me/settings", body = UpdateFriendSettingsBody(mode = mode, question = question))
+
+    /** 当前用户的好友列表。 */
+    suspend fun friends(): ListFriendsResponse =
+        client.get("friends")
+
+    /** 好友请求历史（双向）。 */
+    suspend fun friendRequests(): ListFriendRequestHistoryResponse =
+        client.get("friends/requests")
+
+    /** 待处理（收到的）好友请求数。 */
+    suspend fun pendingFriendRequestCount(): PendingFriendRequestCountResponse =
+        client.get("friends/requests/pending/count")
+
+    /** 接受好友请求。 */
+    suspend fun acceptFriendRequest(requestId: String): FriendRequestDto =
+        client.post("friends/requests/$requestId/accept", body = EmptyBody())
+
+    /** 拒绝好友请求。 */
+    suspend fun rejectFriendRequest(requestId: String): FriendRequestDto =
+        client.post("friends/requests/$requestId/reject", body = EmptyBody())
+
+    /** 目标用户的好友验证要求（添加好友前调用）。 */
+    suspend fun friendAddInfo(uid: Int): FriendAddInfoResponse =
+        client.get("friends/add-info/$uid")
+
+    /** 发送好友请求；message 为验证消息（need_message）或问题答案（question）。 */
+    suspend fun createFriendRequest(toUid: Int, message: String? = null): FriendRequestDto =
+        client.post("friends/requests", body = CreateFriendRequestBody(toUid = toUid, message = message))
 
     // ---- 收藏消息 ----
 
@@ -465,4 +521,9 @@ data class EditMessageBody(
 @kotlinx.serialization.Serializable
 data class ReadBody(
     val messageId: String,
+)
+
+@kotlinx.serialization.Serializable
+data class EmptyBody(
+    val unused: String? = null,
 )

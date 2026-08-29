@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">Chahua</string>
-    <string name="x_app_version" translatable="false">Android-1.1.0</string>
-    <string name="x_user_agent" translatable="false">Chahua-Android/1.1.0 okhttp/4.12.0</string>
+    <string name="x_app_version" translatable="false">Android-1.2.0</string>
+    <string name="x_user_agent" translatable="false">Chahua-Android/1.2.0 okhttp/4.12.0</string>
     <string name="notification_channel_name">Messaging Service</string>
     <string name="notification_channel_desc">Shows notifications for new messages in background</string>
     <string name="notification_channel_chats_name">Group chats</string>
@@ -83,6 +83,8 @@
     <string name="settings_language_english">English</string>
     <string name="settings_show_all_tab">Enable "All" tab</string>
     <string name="settings_show_all_tab_desc">Adds an All tab before Groups and Topics in the chat list.</string>
+    <string name="settings_hide_threads_in_all_tab">Hide threads in "All" tab</string>
+    <string name="settings_hide_threads_in_all_tab_desc">When enabled, the All tab shows chats only.</string>
     <string name="settings_font_size">Font size</string>
     <string name="settings_font_small">Small</string>
     <string name="settings_font_normal">Normal</string>
@@ -95,6 +97,15 @@
     <string name="settings_theme_purple">Purple</string>
     <string name="settings_theme_orange">Orange</string>
     <string name="settings_theme_pink">Pink</string>
+    <string name="settings_theme_custom">Custom</string>
+    <string name="settings_theme_mode">Dark mode</string>
+    <string name="settings_theme_mode_system">Follow system</string>
+    <string name="settings_theme_mode_light">Light</string>
+    <string name="settings_theme_mode_dark">Dark</string>
+    <string name="settings_confirm">OK</string>
+    <string name="settings_theme_brightness">Brightness</string>
+    <string name="settings_theme_hex_hint">Enter color code (#RRGGBB or #AARRGGBB)</string>
+    <string name="settings_theme_hex_invalid">Invalid color code</string>
     <string name="settings_notifications_enabled">New message notifications</string>
     <string name="settings_notifications_desc">Show notifications for new messages while the app is in the background</string>
     <string name="settings_notification_permission">Notification permission</string>
@@ -109,6 +120,10 @@
     <string name="settings_server_exists">Server is already in the list</string>
     <string name="settings_server_add_failed">Add failed: %1$s</string>
     <string name="settings_server_active">In use</string>
+    <string name="settings_server_delete">Delete</string>
+    <string name="settings_server_delete_confirm_title">Remove server</string>
+    <string name="settings_server_delete_confirm">Remove API server %1$s?</string>
+    <string name="settings_server_removed">Server removed</string>
     <string name="settings_developer_features">Feature switches</string>
     <string name="settings_show_uid_in_chat">Show sender UID in chats</string>
     <string name="settings_show_uid_in_chat_desc">Show the sender UID after the username on messages from other users.</string>
@@ -158,6 +173,7 @@
     <string name="chat_status_online">Live</string>
     <string name="chat_status_connecting">Connecting</string>
     <string name="chat_status_offline">Offline</string>
+    <string name="chat_jump_to_latest">Jump to latest</string>
     <string name="chat_status_with_latency">%1$s · %2$s</string>
     <string name="chat_latency_value">%1$dms</string>
     <string name="chat_sender_name_with_uid">%1$s · UID %2$d</string>
@@ -255,6 +271,7 @@
     <string name="chat_voice_stop">Stop recording</string>
     <string name="chat_voice_permission_denied">Microphone permission is required</string>
     <string name="chat_voice_start_failed">Failed to start recording</string>
+    <string name="chat_voice_send_failed">Failed to send voice message</string>
     <string name="chat_file">[File]</string>
     <string name="chat_sticker">[Sticker]</string>
     <string name="chat_message">[Message]</string>
@@ -263,6 +280,9 @@
     <string name="chat_delete_failed">Delete failed: %1$s</string>
     <string name="chat_image_too_large">Image exceeds 20MB and cannot be sent</string>
     <string name="chat_read_image_failed">Cannot read the selected image</string>
+    <string name="chat_file_download">Download</string>
+    <string name="chat_file_downloaded">File downloaded</string>
+    <string name="chat_file_download_failed">Download failed: %1$s</string>
 
     <string name="group_info_title">Group Info</string>
     <string name="group_edit">Edit group</string>
@@ -321,9 +341,63 @@
     <string name="common_avatar_desc">avatar</string>
     <string name="user_profile_uid">UID: %1$d</string>
     <string name="user_profile_space">Personal Space</string>
+    <string name="user_profile_gender">Gender: %1$s</string>
+    <string name="gender_male">Male</string>
+    <string name="gender_female">Female</string>
+    <string name="gender_unknown">Unknown</string>
     <string name="time_format_date">MMM d, HH:mm</string>
     <string name="message_sender_format">%1$s：%2$s</string>
     <string name="message_sender_unknown">User</string>
 
     <string name="service_running">Messaging service is running</string>
+
+    <string name="settings_friend_verification">Friend Verification</string>
+    <string name="friend_verification_mode_direct">Allow anyone to add me</string>
+    <string name="friend_verification_mode_need_message">Require a verification message</string>
+    <string name="friend_verification_mode_question">Require an answer to a question</string>
+    <string name="friend_verification_mode_forbid">Decline all friend requests</string>
+    <string name="friend_verification_desc_direct">Anyone can send you a friend request. No verification message is needed; you just accept or decline.</string>
+    <string name="friend_verification_desc_need_message">Requesters must attach a verification message. You review it before accepting.</string>
+    <string name="friend_verification_desc_question">Requesters must answer your question. You review the answer before accepting.</string>
+    <string name="friend_verification_desc_forbid">No one can send you a friend request.</string>
+    <string name="friend_verification_question_label">Your Question</string>
+    <string name="friend_verification_question_hint">Enter the question requesters must answer</string>
+    <string name="friend_verification_question_required">A question is required.</string>
+    <string name="friend_verification_save">Save</string>
+    <string name="friend_verification_saved">Saved</string>
+    <string name="friend_verification_load_failed">Failed to load</string>
+    <string name="friend_verification_save_failed">Save failed: %1$s</string>
+    <string name="user_profile_message">Message</string>
+    <string name="user_profile_add_friend">Add Friend</string>
+    <string name="chat_dm_user">User %1$d</string>
+    <string name="chat_dm_unavailable">Conversation is not available</string>
+    <string name="sticker_preview_subscribe">Subscribe</string>
+    <string name="sticker_preview_unsubscribe">Unsubscribe</string>
+    <string name="sticker_preview_manage">Manage</string>
+    <string name="sticker_preview_manage_hint">Please manage this pack in Settings → Emojis &amp; Stickers</string>
+    <string name="sticker_preview_pack_count">%1$d stickers</string>
+    <string name="sticker_preview_load_failed">Failed to load sticker details</string>
+
+    <string name="tab_friends">Friends</string>
+    <string name="friends_requests">Friend Requests</string>
+    <string name="friends_requests_empty">No friend requests</string>
+    <string name="friends_empty">No friends yet</string>
+    <string name="friends_section">Friends</string>
+    <string name="friends_accept">Accept</string>
+    <string name="friends_reject">Reject</string>
+    <string name="friends_pending">Pending approval</string>
+    <string name="friends_accepted">Accepted</string>
+    <string name="friends_rejected">Rejected</string>
+    <string name="friends_request_sent">Friend request sent</string>
+    <string name="friends_request_default">Friend request</string>
+    <string name="friends_request_qa">Q: %1$s · A: %2$s</string>
+    <string name="add_friend_title">Add Friend</string>
+    <string name="add_friend_target">Send a friend request to %1$s</string>
+    <string name="add_friend_forbid">This user has set their account to decline all friend requests.</string>
+    <string name="add_friend_direct_note">%1$s will need to confirm your request.</string>
+    <string name="add_friend_need_message">This user requires a verification message.</string>
+    <string name="add_friend_message_hint">Enter a verification message</string>
+    <string name="add_friend_question">Question</string>
+    <string name="add_friend_answer_hint">Your answer</string>
+    <string name="add_friend_send">Send</string>
 </resources>

@@ -11,9 +11,11 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.data.AppSettings
+import net.paigu.chahua.data.ThemeModeOption
 import net.paigu.chahua.data.ThemeColorOption
 
 /** 全局应用设置，供界面读取（字体大小、全部页等）。 */
@@ -21,7 +23,6 @@ val LocalAppSettings = staticCompositionLocalOf { AppSettings() }
 
 @Composable
 fun ChahuaTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {
@@ -29,7 +30,15 @@ fun ChahuaTheme(
         initial = AppGraph.settings.snapshot(),
     )
     val themeOption = ThemeColorOption.from(settings.themeColor)
+    val darkTheme = when (ThemeModeOption.from(settings.themeMode)) {
+        ThemeModeOption.DARK -> true
+        ThemeModeOption.LIGHT -> false
+        ThemeModeOption.SYSTEM -> isSystemInDarkTheme()
+    }
+    val customColor = parseCustomColor(settings.customThemeColor)
     val colorScheme = when {
+        themeOption == ThemeColorOption.CUSTOM && customColor != null ->
+            customColorScheme(customColor, darkTheme)
         themeOption == ThemeColorOption.SYSTEM && dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
@@ -46,4 +55,11 @@ fun ChahuaTheme(
             content = content,
         )
     }
+}
+
+private fun parseCustomColor(hex: String): Color? {
+    if (hex.isBlank()) return null
+    return runCatching {
+        Color(android.graphics.Color.parseColor("#${hex.removePrefix("#")}"))
+    }.getOrNull()
 }

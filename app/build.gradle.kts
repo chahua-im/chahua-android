@@ -16,8 +16,8 @@ android {
         applicationId = "net.paigu.chahua"
         minSdk = 24
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -65,6 +65,7 @@ dependencies {
     implementation(libs.androidx.media3.effect)
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.transformer)
+    implementation(libs.androidx.emoji2.emojipicker)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.window)
     testImplementation(libs.junit)

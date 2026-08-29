@@ -26,6 +26,14 @@ data class CacheUiState(
     val message: String? = null,
 )
 
+data class FriendVerificationUiState(
+    val loading: Boolean = false,
+    val saving: Boolean = false,
+    val mode: String = "direct",
+    val question: String = "",
+    val message: String? = null,
+)
+
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -33,6 +41,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private val _cacheState = MutableStateFlow(CacheUiState())
     val cacheState: StateFlow<CacheUiState> = _cacheState.asStateFlow()
+
+    private val _friendVerificationState = MutableStateFlow(FriendVerificationUiState())
+    val friendVerificationState: StateFlow<FriendVerificationUiState> =
+        _friendVerificationState.asStateFlow()
 
     val sessionState = AppGraph.session.sessionState
     val settingsState = AppGraph.settings.settingsState
@@ -84,12 +96,27 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { AppGraph.settings.setShowAllTab(enabled) }
     }
 
+    fun setHideThreadsInAllTab(enabled: Boolean) {
+        viewModelScope.launch { AppGraph.settings.setHideThreadsInAllTab(enabled) }
+    }
+
     fun setFontSize(key: String) {
         viewModelScope.launch { AppGraph.settings.setFontSize(key) }
     }
 
     fun setThemeColor(key: String) {
         viewModelScope.launch { AppGraph.settings.setThemeColor(key) }
+    }
+
+    fun setThemeMode(key: String) {
+        viewModelScope.launch { AppGraph.settings.setThemeMode(key) }
+    }
+
+    fun setCustomThemeColor(hex: String) {
+        viewModelScope.launch {
+            AppGraph.settings.setCustomThemeColor(hex)
+            AppGraph.settings.setThemeColor("custom")
+        }
     }
 
     fun setLanguage(code: String, onApplied: (() -> Unit)? = null) {
@@ -129,6 +156,90 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setLogLevel(key: String) {
         viewModelScope.launch { AppGraph.settings.setLogLevel(key) }
+    }
+
+    /** 拉取当前用户的好友验证设置。 */
+    fun loadFriendVerification() {
+        if (_friendVerificationState.value.loading) return
+        viewModelScope.launch {
+            _friendVerificationState.value = _friendVerificationState.value.copy(
+                loading = true,
+                message = null,
+            )
+            runCatching { AppGraph.api.friendSettings() }
+                .onSuccess { settings ->
+                    _friendVerificationState.value = FriendVerificationUiState(
+                        mode = settings.mode,
+                        question = settings.question.orEmpty(),
+                    )
+                }
+                .onFailure {
+                    _friendVerificationState.value = _friendVerificationState.value.copy(
+                        loading = false,
+                        message = getString(R.string.friend_verification_load_failed),
+                    )
+                }
+        }
+    }
+
+    /** 删除列表中的某个服务器；若删除的是当前地址则自动切换到剩余第一个并重连。 */
+    fun removeServerUrl(url: String) {
+        viewModelScope.launch {
+            val wasActive = AppGraph.session.snapshot().serverUrl == url
+            runCatching { AppGraph.session.removeServerUrl(url) }
+                .onSuccess {
+                    if (wasActive) {
+                        AppGraph.engine.reconnectNow()
+                        _uiState.value = _uiState.value.copy(
+                            message = getString(R.string.settings_saved),
+                        )
+                    } else {
+                        _uiState.value = _uiState.value.copy(
+                            message = getString(R.string.settings_server_removed),
+                        )
+                    }
+                }
+                .onFailure {
+                    _uiState.value = _uiState.value.copy(
+                        message = getString(R.string.settings_server_add_failed, it.message),
+                    )
+                }
+        }
+    }
+
+    /** 保存好友验证设置（mode: direct | need_message | question | forbid）。 */
+    fun saveFriendVerification(mode: String, question: String) {
+        if (_friendVerificationState.value.saving) return
+        viewModelScope.launch {
+            _friendVerificationState.value = _friendVerificationState.value.copy(
+                saving = true,
+                mode = mode,
+                question = question,
+                message = null,
+            )
+            runCatching {
+                AppGraph.api.updateFriendSettings(
+                    mode = mode,
+                    question = if (mode == "question") question.trim() else null,
+                )
+            }
+                .onSuccess {
+                    _friendVerificationState.value = _friendVerificationState.value.copy(
+                        saving = false,
+                        message = getString(R.string.friend_verification_saved),
+                    )
+                }
+                .onFailure {
+                    _friendVerificationState.value = _friendVerificationState.value.copy(
+                        saving = false,
+                        message = getString(R.string.friend_verification_save_failed, it.message),
+                    )
+                }
+        }
+    }
+
+    fun dismissFriendVerificationMessage() {
+        _friendVerificationState.value = _friendVerificationState.value.copy(message = null)
     }
 
     fun loadCacheSize() {

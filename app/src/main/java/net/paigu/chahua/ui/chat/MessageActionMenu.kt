@@ -2,6 +2,7 @@ package net.paigu.chahua.ui.chat
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -32,6 +34,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -53,9 +56,8 @@ data class MessageActionItem(
 )
 
 /**
- * 长按消息弹出的浮层：操作菜单固定在消息靠中心一侧、菜单底部与消息底部对齐；
- * 快捷表情栏与菜单分离，独立显示在消息正下方，最右侧“+”可打开更多 emoji 选择。
- * 菜单与表情栏位于同一个弹窗窗口内，通过绝对定位放置，避免多个弹窗互相抢点击。
+ * 长按消息弹出的浮层：更多操作菜单改为横向排列（可横向滚动），
+ * 快捷表情栏保持在消息上方，整个浮层位于消息顶部上方。
  */
 @Composable
 fun MessageActionMenu(
@@ -114,20 +116,25 @@ private fun ReactionOverlayContent(
 
     Layout(
         content = {
+            // 横向操作菜单（位于上方，可滚动）。
             Surface(
                 shape = RoundedCornerShape(14.dp),
                 tonalElevation = 6.dp,
                 shadowElevation = 8.dp,
                 modifier = Modifier
-                    .widthIn(max = 320.dp)
+                    .widthIn(max = 360.dp)
                     .onSizeChanged { onMenuMeasured(it) },
             ) {
-                Column {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     actions.forEach { action ->
-                        ActionRow(action = action)
+                        ActionCell(action = action)
                     }
                 }
             }
+            // 快捷表情栏（位于消息正上方）。
             Surface(
                 shape = RoundedCornerShape(18.dp),
                 tonalElevation = 6.dp,
@@ -147,7 +154,7 @@ private fun ReactionOverlayContent(
                     }
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(40.dp)
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.surfaceVariant)
                             .clickable(onClick = onOpenEmojiPicker),
@@ -166,27 +173,12 @@ private fun ReactionOverlayContent(
     ) { measurables, constraints ->
         val menu = measurables[0].measure(constraints)
         val bar = measurables[1].measure(constraints)
-
-        // 菜单靠中心一侧：自己的消息在气泡左侧，收到的消息在气泡右侧。
-        val menuX = if (mine) {
-            anchorBounds.left - gapPx - menu.width
-        } else {
-            anchorBounds.right + gapPx
-        }
-        // 表情栏贴合消息正下方：与气泡左/右边缘对齐。
-        val barX = if (mine) {
-            anchorBounds.right - bar.width
-        } else {
-            anchorBounds.left
-        }
-        val contentLeft = minOf(menuX, barX)
-        val contentRight = maxOf(menuX + menu.width, barX + bar.width)
-        val contentWidth = (contentRight - contentLeft).coerceAtLeast(0)
+        val contentWidth = maxOf(menu.width, bar.width)
         val contentHeight = menu.height + gapPx + bar.height
 
         layout(contentWidth, contentHeight) {
-            menu.place(menuX - contentLeft, 0)
-            bar.place(barX - contentLeft, menu.height + gapPx)
+            menu.place(0, 0)
+            bar.place(0, menu.height + gapPx)
         }
     }
 }
@@ -198,7 +190,7 @@ private fun QuickReactionButton(
 ) {
     Box(
         modifier = Modifier
-            .size(36.dp)
+            .size(40.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick),
@@ -211,17 +203,18 @@ private fun QuickReactionButton(
     }
 }
 
+/** 横向菜单中的单个操作项：图标在上、文字在下，紧凑排列。 */
 @Composable
-private fun ActionRow(action: MessageActionItem) {
-    Row(
+private fun ActionCell(action: MessageActionItem) {
+    Column(
         modifier = Modifier
             .clickable { action.onClick() }
-            .padding(horizontal = 14.dp, vertical = 11.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
             imageVector = action.icon,
-            contentDescription = null,
+            contentDescription = action.label,
             modifier = Modifier.size(20.dp),
             tint = if (action.destructive) {
                 MaterialTheme.colorScheme.error
@@ -229,10 +222,12 @@ private fun ActionRow(action: MessageActionItem) {
                 MaterialTheme.colorScheme.onSurfaceVariant
             },
         )
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.size(4.dp))
         Text(
             text = action.label,
-            style = MaterialTheme.typography.bodyLarge,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             color = if (action.destructive) {
                 MaterialTheme.colorScheme.error
             } else {
@@ -243,8 +238,8 @@ private fun ActionRow(action: MessageActionItem) {
 }
 
 /**
- * 计算弹窗窗口位置：菜单底部与消息底部对齐、靠中心一侧；
- * 弹窗内容中菜单在上、表情栏在菜单下方，因此表情栏恰好位于消息正下方。
+ * 计算弹窗窗口位置：整个浮层位于消息上方，
+ * 底部表情栏贴合消息顶部，横向操作菜单在表情栏上方。
  */
 private class ReactionOverlayPositionProvider(
     private val mine: Boolean,
@@ -263,19 +258,14 @@ private class ReactionOverlayPositionProvider(
         val topPadding = with(density) { 12.dp.roundToPx() }
         val bottomPadding = with(density) { 24.dp.roundToPx() }
 
-        val menuX = if (mine) {
-            anchorBounds.left - gap - menuSize.width
-        } else {
-            anchorBounds.right + gap
-        }
-        val barX = if (mine) {
-            anchorBounds.right - barSize.width
+        // 弹窗水平范围与消息对齐：自己的消息右对齐，收到的消息左对齐。
+        val x = if (mine) {
+            anchorBounds.right - popupContentSize.width
         } else {
             anchorBounds.left
         }
-        val x = minOf(menuX, barX)
-        // 菜单底部与消息底部对齐
-        val y = anchorBounds.bottom - menuSize.height
+        // 表情栏底部贴合消息顶部（上方留 4dp）。
+        val y = anchorBounds.top - gap - popupContentSize.height
 
         val minX = sidePadding
         val maxX = (windowSize.width - popupContentSize.width - sidePadding).coerceAtLeast(minX)
