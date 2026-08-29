@@ -14,12 +14,17 @@ bin/
 gen/
 out/
 build/
-gradle/
-app/build/
 
-# Gradle wrapper files (如果你使用 wrapper，可以忽略这些，保留 gradlew 和 gradlew.bat)
+# Gradle wrapper files（wrapper jar 和版本目录需要提交，否则 clone 后无法构建）
 .gradle/
-gradle/wrapper/gradle-wrapper.jar
+gradle/gradle-daemon-jvm.properties
+
+# 本地构建缓存 / 工具状态
+.kotlin/
+.codex/
+
+# Release 构建产物
+app/release/
 
 # Local configuration file (sdk path, etc)
 local.properties
