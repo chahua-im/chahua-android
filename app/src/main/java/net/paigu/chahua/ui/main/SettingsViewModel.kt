@@ -144,15 +144,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { AppGraph.settings.setNotificationsEnabled(enabled) }
     }
 
-    /** 常驻通知（前台服务）开关：关闭时停止后台消息服务，开启时重新拉起。 */
+    /** 常驻通知开关：只控制通知栏常驻通知的显示/隐藏，后台服务与推送不受影响。 */
     fun setPersistentNotificationEnabled(enabled: Boolean) {
         viewModelScope.launch {
             AppGraph.settings.setPersistentNotificationEnabled(enabled)
-            if (enabled) {
-                AppGraph.startMessaging(getApplication())
-            } else {
-                AppGraph.stopMessaging(getApplication())
-            }
+            AppGraph.setPersistentNotification(getApplication(), enabled)
         }
     }
 

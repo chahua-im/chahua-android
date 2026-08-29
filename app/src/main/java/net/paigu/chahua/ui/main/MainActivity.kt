@@ -107,9 +107,7 @@ class MainActivity : FragmentActivity() {
         )
 
         requestNotificationPermissionIfNeeded()
-        if (AppGraph.settings.snapshot().persistentNotificationEnabled) {
-            AppGraph.startMessaging(this)
-        }
+        AppGraph.startMessaging(this)
         maybeShowBatteryOptimizationPrompt()
         maybeCheckForUpdates()
     }

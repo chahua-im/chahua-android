@@ -107,7 +107,7 @@
     <string name="settings_notifications_enabled">新訊息通知</string>
     <string name="settings_notifications_desc">應用程式在背景時收到新訊息是否彈出通知</string>
     <string name="settings_notifications_persistent">常駐通知</string>
-    <string name="settings_notifications_persistent_desc">在通知欄常駐一則通知，確保應用程式在背景持續運作、即時接收訊息</string>
+    <string name="settings_notifications_persistent_desc">關閉後通知欄不再顯示常駐通知，背景訊息推送、線上狀態與延遲顯示不受影響</string>
     <string name="settings_battery_optimization">忽略電池最佳化</string>
     <string name="settings_battery_optimization_desc">允許應用程式在背景保持運作，確保訊息即時送達</string>
     <string name="settings_battery_optimization_ignored">已忽略</string>
