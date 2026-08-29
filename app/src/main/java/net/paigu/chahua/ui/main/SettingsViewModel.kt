@@ -10,7 +10,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.paigu.chahua.core.AppGraph
+import net.paigu.chahua.core.BatteryOptimization
 import net.paigu.chahua.R
+import net.paigu.chahua.data.UpdateChecker
 import java.io.File
 
 data class SettingsUiState(
@@ -34,6 +36,15 @@ data class FriendVerificationUiState(
     val message: String? = null,
 )
 
+data class UpdateUiState(
+    val checking: Boolean = false,
+    val updateAvailable: Boolean = false,
+    val latestVersion: String = "",
+    val releaseNotes: String = "",
+    val downloadUrl: String = "",
+    val message: String? = null,
+)
+
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -45,6 +56,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _friendVerificationState = MutableStateFlow(FriendVerificationUiState())
     val friendVerificationState: StateFlow<FriendVerificationUiState> =
         _friendVerificationState.asStateFlow()
+
+    private val _updateState = MutableStateFlow(UpdateUiState())
+    val updateState: StateFlow<UpdateUiState> = _updateState.asStateFlow()
 
     val sessionState = AppGraph.session.sessionState
     val settingsState = AppGraph.settings.settingsState
@@ -128,6 +142,60 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setNotificationsEnabled(enabled: Boolean) {
         viewModelScope.launch { AppGraph.settings.setNotificationsEnabled(enabled) }
+    }
+
+    /** 常驻通知（前台服务）开关：关闭时停止后台消息服务，开启时重新拉起。 */
+    fun setPersistentNotificationEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            AppGraph.settings.setPersistentNotificationEnabled(enabled)
+            if (enabled) {
+                AppGraph.startMessaging(getApplication())
+            } else {
+                AppGraph.stopMessaging(getApplication())
+            }
+        }
+    }
+
+    /** 调起系统授权框，请求允许应用忽略电池优化。 */
+    fun requestIgnoreBatteryOptimization() {
+        BatteryOptimization.requestIgnore(getApplication())
+    }
+
+    /** 检查 GitHub 最新版本；有更新时弹窗提示，无更新/失败时用 Toast 提示。 */
+    fun checkForUpdates() {
+        if (_updateState.value.checking) return
+        viewModelScope.launch {
+            _updateState.value = _updateState.value.copy(checking = true, message = null)
+            runCatching { UpdateChecker.checkLatest() }
+                .onSuccess { result ->
+                    _updateState.value = _updateState.value.copy(
+                        checking = false,
+                        updateAvailable = result.available,
+                        latestVersion = result.latestVersion,
+                        releaseNotes = result.releaseNotes,
+                        downloadUrl = result.downloadUrl,
+                        message = if (result.available) {
+                            null
+                        } else {
+                            getString(R.string.update_already_latest)
+                        },
+                    )
+                }
+                .onFailure {
+                    _updateState.value = _updateState.value.copy(
+                        checking = false,
+                        message = getString(R.string.update_check_failed),
+                    )
+                }
+        }
+    }
+
+    fun dismissUpdateDialog() {
+        _updateState.value = _updateState.value.copy(updateAvailable = false)
+    }
+
+    fun dismissUpdateMessage() {
+        _updateState.value = _updateState.value.copy(message = null)
     }
 
     fun setEnterToSend(enabled: Boolean) {

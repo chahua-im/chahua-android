@@ -81,6 +81,8 @@ data class AppSettings(
     val themeMode: String = ThemeModeOption.SYSTEM.key,
     val language: String = AppLanguage.SYSTEM.code,
     val notificationsEnabled: Boolean = true,
+    val persistentNotificationEnabled: Boolean = true,
+    val batteryOptimizationPromptDismissed: Boolean = false,
     val enterToSend: Boolean = true,
     val developerEnabled: Boolean = false,
     val showUidInChat: Boolean = false,
@@ -111,6 +113,9 @@ class SettingsManager(context: Context) {
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val LANGUAGE = stringPreferencesKey("language")
         val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
+        val PERSISTENT_NOTIFICATION_ENABLED = booleanPreferencesKey("persistent_notification_enabled")
+        val BATTERY_OPTIMIZATION_PROMPT_DISMISSED =
+            booleanPreferencesKey("battery_optimization_prompt_dismissed")
         val ENTER_TO_SEND = booleanPreferencesKey("enter_to_send")
         val DEVELOPER_ENABLED = booleanPreferencesKey("developer_enabled")
         val SHOW_UID_IN_CHAT = booleanPreferencesKey("show_uid_in_chat")
@@ -140,6 +145,9 @@ class SettingsManager(context: Context) {
             themeMode = p[Keys.THEME_MODE] ?: ThemeModeOption.SYSTEM.key,
             language = p[Keys.LANGUAGE] ?: AppLanguage.SYSTEM.code,
             notificationsEnabled = p[Keys.NOTIFICATIONS_ENABLED] ?: true,
+            persistentNotificationEnabled = p[Keys.PERSISTENT_NOTIFICATION_ENABLED] ?: true,
+            batteryOptimizationPromptDismissed =
+                p[Keys.BATTERY_OPTIMIZATION_PROMPT_DISMISSED] ?: false,
             enterToSend = p[Keys.ENTER_TO_SEND] ?: true,
             developerEnabled = p[Keys.DEVELOPER_ENABLED] ?: false,
             showUidInChat = p[Keys.SHOW_UID_IN_CHAT] ?: false,
@@ -234,6 +242,16 @@ class SettingsManager(context: Context) {
     suspend fun setNotificationsEnabled(enabled: Boolean) {
         prefs.edit { it[Keys.NOTIFICATIONS_ENABLED] = enabled }
         snapshot = snapshot.copy(notificationsEnabled = enabled)
+    }
+
+    suspend fun setPersistentNotificationEnabled(enabled: Boolean) {
+        prefs.edit { it[Keys.PERSISTENT_NOTIFICATION_ENABLED] = enabled }
+        snapshot = snapshot.copy(persistentNotificationEnabled = enabled)
+    }
+
+    suspend fun setBatteryOptimizationPromptDismissed(dismissed: Boolean) {
+        prefs.edit { it[Keys.BATTERY_OPTIMIZATION_PROMPT_DISMISSED] = dismissed }
+        snapshot = snapshot.copy(batteryOptimizationPromptDismissed = dismissed)
     }
 
     suspend fun setEnterToSend(enabled: Boolean) {

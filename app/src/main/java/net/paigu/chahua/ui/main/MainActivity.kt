@@ -1,8 +1,11 @@
 package net.paigu.chahua.ui.main
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -18,9 +21,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.fragment.app.FragmentActivity
 import androidx.window.embedding.SplitController
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import net.paigu.chahua.R
 import net.paigu.chahua.core.AppGraph
+import net.paigu.chahua.core.BatteryOptimization
 import net.paigu.chahua.data.AppLocale
+import net.paigu.chahua.data.UpdateChecker
 import net.paigu.chahua.ui.theme.ChahuaTheme
 
 /**
@@ -31,6 +39,8 @@ class MainActivity : FragmentActivity() {
 
     internal var selectedTab by mutableIntStateOf(0)
         private set
+
+    private var updatePromptChecked = false
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -97,7 +107,11 @@ class MainActivity : FragmentActivity() {
         )
 
         requestNotificationPermissionIfNeeded()
-        AppGraph.startMessaging(this)
+        if (AppGraph.settings.snapshot().persistentNotificationEnabled) {
+            AppGraph.startMessaging(this)
+        }
+        maybeShowBatteryOptimizationPrompt()
+        maybeCheckForUpdates()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -139,6 +153,58 @@ class MainActivity : FragmentActivity() {
     private fun requestNotificationPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= 33) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    /** 启动时检测电池优化：未豁免且用户未选择“永不提示”时弹窗提示。 */
+    private fun maybeShowBatteryOptimizationPrompt() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        if (BatteryOptimization.isIgnoringBatteryOptimizations(this)) return
+        if (AppGraph.settings.snapshot().batteryOptimizationPromptDismissed) return
+        AlertDialog.Builder(this)
+            .setTitle(R.string.battery_optimization_dialog_title)
+            .setMessage(R.string.battery_optimization_dialog_message)
+            .setPositiveButton(R.string.battery_optimization_dialog_never) { _, _ ->
+                // 永不提示：记住选择，之后启动不再弹窗。
+                AppGraph.scope.launch {
+                    AppGraph.settings.setBatteryOptimizationPromptDismissed(true)
+                }
+            }
+            .setNegativeButton(R.string.battery_optimization_dialog_cancel, null)
+            .setNeutralButton(R.string.battery_optimization_dialog_continue) { _, _ ->
+                // 继续：跳转系统设置页，由用户手动关闭电池优化。
+                BatteryOptimization.openSettings(this)
+            }
+            .show()
+    }
+
+    /** 启动时静默检查 GitHub 最新版本，发现新版本时弹窗提示（本次进程只检查一次）。 */
+    private fun maybeCheckForUpdates() {
+        if (updatePromptChecked) return
+        updatePromptChecked = true
+        AppGraph.scope.launch {
+            val result = runCatching { UpdateChecker.checkLatest() }.getOrNull() ?: return@launch
+            if (!result.available) return@launch
+            withContext(Dispatchers.Main) {
+                if (isFinishing || isDestroyed) return@withContext
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle(getString(R.string.update_available_title, result.latestVersion))
+                    .setMessage(result.releaseNotes.ifBlank {
+                        getString(R.string.update_release_notes_empty)
+                    })
+                    .setPositiveButton(R.string.update_download) { _, _ ->
+                        if (result.downloadUrl.isNotBlank()) {
+                            runCatching {
+                                startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(result.downloadUrl))
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                )
+                            }
+                        }
+                    }
+                    .setNegativeButton(R.string.update_later, null)
+                    .show()
+            }
         }
     }
 
