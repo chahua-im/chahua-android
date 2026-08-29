@@ -19,9 +19,14 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -95,15 +100,26 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import net.paigu.chahua.R
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.data.AppLocale
+import net.paigu.chahua.data.ApiJson
 import net.paigu.chahua.ui.common.AuthAsyncImage
 import net.paigu.chahua.ui.theme.ChahuaTheme
 import java.util.Locale
 
+@Serializable
+data class MediaViewerItem(
+    val url: String,
+    val kind: String,
+    val fileName: String? = null,
+)
+
 /**
- * 媒体查看：图片支持双指缩放、双击放大；视频用 Media3 ExoPlayer 播放。
+ * 媒体查看：图片支持双指缩放、双击放大，左右滑动切换消息中的上一张/下一张图；
+ * 视频用 Media3 ExoPlayer 播放。
  * 沉浸式全屏，视频控件（返回 / 下载 / 进度条 / 播放控制 / 倍速）自动隐藏，点击画面唤出。
  */
 class MediaViewerActivity : ComponentActivity() {
@@ -113,15 +129,27 @@ class MediaViewerActivity : ComponentActivity() {
     }
 
     companion object {
+        private const val EXTRA_ITEMS = "media_items"
+        private const val EXTRA_INDEX = "media_index"
         private const val EXTRA_URL = "media_url"
         private const val EXTRA_KIND = "media_kind"
         private const val EXTRA_FILE_NAME = "media_file_name"
 
-        fun createIntent(context: Context, url: String, kind: String, fileName: String? = null): Intent =
+        /** 打开一组媒体（同一消息的多张图），并从 [index] 开始浏览。 */
+        fun createIntent(context: Context, items: List<MediaViewerItem>, index: Int): Intent =
             Intent(context, MediaViewerActivity::class.java)
-                .putExtra(EXTRA_URL, url)
-                .putExtra(EXTRA_KIND, kind)
-                .putExtra(EXTRA_FILE_NAME, fileName)
+                .putExtra(
+                    EXTRA_ITEMS,
+                    ApiJson.instance.encodeToString(
+                        ListSerializer(MediaViewerItem.serializer()),
+                        items,
+                    ),
+                )
+                .putExtra(EXTRA_INDEX, index)
+
+        /** 打开单个媒体（视频 / 群资料附件等，无滑动切换）。 */
+        fun createIntent(context: Context, url: String, kind: String, fileName: String? = null): Intent =
+            createIntent(context, listOf(MediaViewerItem(url, kind, fileName)), 0)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -133,18 +161,36 @@ class MediaViewerActivity : ComponentActivity() {
             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         insetsController.hide(WindowInsetsCompat.Type.systemBars())
 
-        val url = intent.getStringExtra(EXTRA_URL) ?: run {
-            finish()
-            return
+        val itemsJson = intent.getStringExtra(EXTRA_ITEMS)
+        val decodedItems = itemsJson?.let { raw ->
+            runCatching {
+                ApiJson.instance.decodeFromString(
+                    ListSerializer(MediaViewerItem.serializer()),
+                    raw,
+                )
+            }.getOrNull()
+        }.orEmpty()
+        val items = if (decodedItems.isNotEmpty()) {
+            decodedItems
+        } else {
+            val url = intent.getStringExtra(EXTRA_URL) ?: run {
+                finish()
+                return
+            }
+            listOf(
+                MediaViewerItem(
+                    url = url,
+                    kind = intent.getStringExtra(EXTRA_KIND) ?: "image",
+                    fileName = intent.getStringExtra(EXTRA_FILE_NAME),
+                ),
+            )
         }
-        val kind = intent.getStringExtra(EXTRA_KIND) ?: "image"
-        val fileName = intent.getStringExtra(EXTRA_FILE_NAME)
+        val initialIndex = intent.getIntExtra(EXTRA_INDEX, 0).coerceIn(0, items.lastIndex)
         setContent {
             ChahuaTheme {
                 MediaViewerScreen(
-                    url = url,
-                    kind = kind,
-                    fileName = fileName,
+                    items = items,
+                    initialIndex = initialIndex,
                     onBack = { finish() },
                 )
             }
@@ -154,21 +200,22 @@ class MediaViewerActivity : ComponentActivity() {
 
 @Composable
 private fun MediaViewerScreen(
-    url: String,
-    kind: String,
-    fileName: String?,
+    items: List<MediaViewerItem>,
+    initialIndex: Int,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var saving by remember { mutableStateOf(false) }
+    val pagerState = rememberPagerState(initialPage = initialIndex) { items.size }
 
     fun performSave() {
         if (saving) return
+        val item = items[pagerState.currentPage.coerceIn(0, items.lastIndex)]
         scope.launch {
             saving = true
             try {
-                MediaSaver.downloadToGallery(context, url, kind, fileName)
+                MediaSaver.downloadToGallery(context, item.url, item.kind, item.fileName)
                 Toast.makeText(context, R.string.media_saved, Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(
@@ -212,24 +259,44 @@ private fun MediaViewerScreen(
             .background(Color.Black),
         contentAlignment = Alignment.Center,
     ) {
-        if (kind.startsWith("video")) {
-            ExoVideoPlayer(
-                url = url,
-                onBack = onBack,
-                onSave = ::requestSave,
-                saving = saving,
-            )
-        } else {
-            ZoomableImage(url = url, onTap = onBack)
-            OverlayIconButton(
-                icon = Icons.Filled.Download,
-                contentDescription = stringResource(R.string.media_save),
-                onClick = ::requestSave,
-                showProgress = saving,
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+        ) { page ->
+            val item = items[page]
+            if (item.kind.startsWith("video")) {
+                ExoVideoPlayer(
+                    url = item.url,
+                    onBack = onBack,
+                    onSave = ::requestSave,
+                    saving = saving,
+                )
+            } else {
+                ZoomableImage(url = item.url, onTap = onBack)
+                OverlayIconButton(
+                    icon = Icons.Filled.Download,
+                    contentDescription = stringResource(R.string.media_save),
+                    onClick = ::requestSave,
+                    showProgress = saving,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .statusBarsPadding()
+                        .padding(8.dp),
+                )
+            }
+        }
+        if (items.size > 1) {
+            Text(
+                text = "${pagerState.currentPage + 1} / ${items.size}",
+                color = Color.White,
+                style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
+                    .align(Alignment.TopCenter)
                     .statusBarsPadding()
-                    .padding(8.dp),
+                    .padding(top = 8.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.Black.copy(alpha = 0.4f))
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
             )
         }
     }
@@ -646,9 +713,29 @@ private fun ZoomableImage(url: String, onTap: () -> Unit) {
                 )
             }
             .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    scale = (scale * zoom).coerceIn(1f, 4f)
-                    offset = if (scale > 1f) offset + pan else Offset.Zero
+                // 缩放/平移：未放大（scale == 1）时不消费单指滑动，
+                // 让外层 HorizontalPager 处理左右翻页；放大后或双指缩放时才接管。
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                        val canceled = event.changes.any { it.isConsumed }
+                        if (!canceled) {
+                            val pointerCount = event.changes.count { it.pressed }
+                            val zoomChange = event.calculateZoom()
+                            val panChange = event.calculatePan()
+                            if (pointerCount > 1 || scale > 1f) {
+                                event.changes.forEach { it.consume() }
+                                val newScale = (scale * zoomChange).coerceIn(1f, 4f)
+                                scale = newScale
+                                offset = if (newScale > 1f) {
+                                    offset + panChange
+                                } else {
+                                    Offset.Zero
+                                }
+                            }
+                        }
+                    } while (!canceled && event.changes.any { it.pressed })
                 }
             },
         contentAlignment = Alignment.Center,
