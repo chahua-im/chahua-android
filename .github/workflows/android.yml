@@ -55,7 +55,7 @@ jobs:
         run: |
           BUILD_TOOLS=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)
           "$ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign" -f -p 4 \
-            app/build/outputs/apk/release/app-release.apk \
+            app/build/outputs/apk/release/app-release-unsigned.apk \
             app/build/outputs/apk/release/app-release-aligned.apk
 
       # 8. 使用 apksigner 对 APK 进行签名（v2/v3 签名，兼容 Android 11+）
