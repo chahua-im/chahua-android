@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -60,6 +61,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
@@ -150,12 +152,25 @@ internal fun GeneralScreen(
     currentLanguage: AppLanguage,
     enterToSend: Boolean,
     showAvatarsInMessages: Boolean,
+    updateState: UpdateUiState,
+    onCheckForUpdates: () -> Unit,
+    onDismissUpdateDialog: () -> Unit,
+    onDismissUpdateMessage: () -> Unit,
     onBack: () -> Unit,
     onOpenLanguage: () -> Unit,
     onOpenCache: () -> Unit,
     onEnterToSendChange: (Boolean) -> Unit,
     onShowAvatarsInMessagesChange: (Boolean) -> Unit,
 ) {
+    val context = LocalContext.current
+
+    LaunchedEffect(updateState.message) {
+        updateState.message?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            onDismissUpdateMessage()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -189,6 +204,13 @@ internal fun GeneralScreen(
                     icon = Icons.Filled.DeleteSweep,
                     title = stringResource(R.string.settings_cache),
                     onClick = onOpenCache,
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                SettingsEntryRow(
+                    icon = Icons.Filled.SystemUpdate,
+                    title = stringResource(R.string.settings_check_update),
+                    subtitle = stringResource(R.string.settings_check_update_desc),
+                    onClick = onCheckForUpdates,
                 )
             }
             Spacer(modifier = Modifier.height(16.dp))
@@ -238,6 +260,69 @@ internal fun GeneralScreen(
                         onCheckedChange = onShowAvatarsInMessagesChange,
                     )
                 }
+            }
+
+            if (updateState.checking) {
+                AlertDialog(
+                    onDismissRequest = { },
+                    title = { Text(stringResource(R.string.update_checking)) },
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(stringResource(R.string.update_checking_hint))
+                        }
+                    },
+                    confirmButton = {},
+                )
+            }
+
+            if (updateState.updateAvailable) {
+                AlertDialog(
+                    onDismissRequest = onDismissUpdateDialog,
+                    title = {
+                        Text(stringResource(R.string.update_available_title, updateState.latestVersion))
+                    },
+                    text = {
+                        Column(
+                            modifier = Modifier
+                                .heightIn(max = 320.dp)
+                                .verticalScroll(rememberScrollState()),
+                        ) {
+                            Text(
+                                text = updateState.releaseNotes.ifBlank {
+                                    stringResource(R.string.update_release_notes_empty)
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                if (updateState.downloadUrl.isNotBlank()) {
+                                    runCatching {
+                                        context.startActivity(
+                                            Intent(Intent.ACTION_VIEW, Uri.parse(updateState.downloadUrl))
+                                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                        )
+                                    }
+                                }
+                                onDismissUpdateDialog()
+                            },
+                        ) {
+                            Text(stringResource(R.string.update_download))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = onDismissUpdateDialog) {
+                            Text(stringResource(R.string.update_later))
+                        }
+                    },
+                )
             }
         }
     }
