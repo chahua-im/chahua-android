@@ -108,6 +108,8 @@
     <string name="settings_theme_hex_invalid">Invalid color code</string>
     <string name="settings_notifications_enabled">New message notifications</string>
     <string name="settings_notifications_desc">Show notifications for new messages while the app is in the background</string>
+    <string name="settings_notifications_persistent">Persistent notification</string>
+    <string name="settings_notifications_persistent_desc">Keep a notification in the status bar to keep the app alive in the background</string>
     <string name="settings_notification_permission">Notification permission</string>
     <string name="settings_notification_granted">Granted</string>
     <string name="settings_notification_denied">Not granted</string>

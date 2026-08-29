@@ -130,6 +130,18 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { AppGraph.settings.setNotificationsEnabled(enabled) }
     }
 
+    /** 常驻通知（前台服务）开关：关闭时停止后台消息服务，开启时重新拉起。 */
+    fun setPersistentNotificationEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            AppGraph.settings.setPersistentNotificationEnabled(enabled)
+            if (enabled) {
+                AppGraph.startMessaging(getApplication())
+            } else {
+                AppGraph.stopMessaging(getApplication())
+            }
+        }
+    }
+
     fun setEnterToSend(enabled: Boolean) {
         viewModelScope.launch { AppGraph.settings.setEnterToSend(enabled) }
     }

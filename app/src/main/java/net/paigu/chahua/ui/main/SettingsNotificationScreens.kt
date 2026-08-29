@@ -149,6 +149,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 internal fun NotificationsScreen(
     settings: net.paigu.chahua.data.AppSettings,
     onNotificationsEnabledChange: (Boolean) -> Unit,
+    onPersistentNotificationEnabledChange: (Boolean) -> Unit,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -203,6 +204,38 @@ internal fun NotificationsScreen(
                     Switch(
                         checked = settings.notificationsEnabled,
                         onCheckedChange = onNotificationsEnabledChange,
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            onPersistentNotificationEnabledChange(
+                                !settings.persistentNotificationEnabled,
+                            )
+                        }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.settings_notifications_persistent),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_notifications_persistent_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                    Switch(
+                        checked = settings.persistentNotificationEnabled,
+                        onCheckedChange = onPersistentNotificationEnabledChange,
                     )
                 }
             }

@@ -106,6 +106,8 @@
     <string name="settings_theme_hex_invalid">色号无效</string>
     <string name="settings_notifications_enabled">新消息通知</string>
     <string name="settings_notifications_desc">应用在后台时收到新消息是否弹出通知</string>
+    <string name="settings_notifications_persistent">常驻通知</string>
+    <string name="settings_notifications_persistent_desc">在通知栏常驻一条通知，保证应用后台存活、消息实时接收</string>
     <string name="settings_notification_permission">通知权限</string>
     <string name="settings_notification_granted">已授权</string>
     <string name="settings_notification_denied">未授权</string>

@@ -106,6 +106,8 @@
     <string name="settings_theme_hex_invalid">色號無效</string>
     <string name="settings_notifications_enabled">新訊息通知</string>
     <string name="settings_notifications_desc">應用程式在背景時收到新訊息是否彈出通知</string>
+    <string name="settings_notifications_persistent">常駐通知</string>
+    <string name="settings_notifications_persistent_desc">在通知欄常駐一則通知，確保應用程式在背景持續運作、即時接收訊息</string>
     <string name="settings_notification_permission">通知權限</string>
     <string name="settings_notification_granted">已授權</string>
     <string name="settings_notification_denied">未授權</string>

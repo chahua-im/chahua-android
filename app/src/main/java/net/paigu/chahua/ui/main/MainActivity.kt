@@ -97,7 +97,9 @@ class MainActivity : FragmentActivity() {
         )
 
         requestNotificationPermissionIfNeeded()
-        AppGraph.startMessaging(this)
+        if (AppGraph.settings.snapshot().persistentNotificationEnabled) {
+            AppGraph.startMessaging(this)
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
