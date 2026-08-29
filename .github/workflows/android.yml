@@ -18,8 +18,6 @@ jobs:
   build:
     name: Build Release APK
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
       # 1. 检出代码
@@ -63,32 +61,30 @@ jobs:
       # 8. 使用 apksigner 对 APK 进行签名（v2/v3 签名，兼容 Android 11+）
       - name: Sign APK
         run: |
-          jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
-            -keystore release.jks \
-            -storepass ${{ secrets.KEYSTORE_PASSWORD }} \
-            -keypass ${{ secrets.KEY_PASSWORD }} \
-            app/build/outputs/apk/release/*-release-unsigned.apk \
-            ${{ secrets.KEY_ALIAS }}
+          BUILD_TOOLS=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner" sign \
+            --ks release.jks \
+            --ks-pass "pass:${{ secrets.KEYSTORE_PASSWORD }}" \
+            --key-pass "pass:${{ secrets.KEY_PASSWORD }}" \
+            --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
+            --out app/build/outputs/apk/release/app-release.apk \
+            app/build/outputs/apk/release/app-release-aligned.apk
 
-      # 8. 使用 zipalign 对齐 APK (优化运行效率)
-      #    注意：请根据你项目使用的 Android SDK build-tools 版本调整路径。
-      #    一般通过 ANDROID_HOME 环境变量定位，以下写法自动寻找最高版本。
-      - name: Align APK
+      # 9. 验证最终 APK 的签名
+      - name: Verify APK signature
         run: |
-          # 查找最新的 build-tools 目录
-          BUILD_TOOLS=$(ls $ANDROID_HOME/build-tools | sort -V | tail -n 1)
-          $ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign -v 4 \
-            app/build/outputs/apk/release/*-release-unsigned.apk \
+          BUILD_TOOLS=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner" verify --verbose \
             app/build/outputs/apk/release/app-release.apk
 
-      # 9. 将最终的 APK 上传为工作流产物 (Artifact)，方便手动下载
+      # 10. 将最终的 APK 上传为工作流产物 (Artifact)，方便手动下载
       - name: Upload APK as Artifact
         uses: actions/upload-artifact@v4
         with:
           name: signed-apk
           path: app/build/outputs/apk/release/app-release.apk
 
-      # 10. (可选) 自动创建 GitHub Release 并上传 APK
+      # 11. (可选) 自动创建 GitHub Release 并上传 APK
       #     仅当推送标签 (v*) 时触发，手动触发时跳过
       - name: Create Release and Upload APK
         uses: softprops/action-gh-release@v2
