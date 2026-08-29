@@ -165,6 +165,20 @@ class SessionManager(context: Context) {
         return true
     }
 
+    /** 从列表删除服务器地址；若删除的是当前地址，则切换到列表中第一个（或默认地址）。 */
+    suspend fun removeServerUrl(url: String) {
+        val normalized = normalizeServerUrl(url)
+        val existing = readServerUrls().filterNot { it == normalized }
+        val urls = if (existing.isEmpty()) listOf(DEFAULT_SERVER_URL) else existing
+        val current = snapshot.serverUrl
+        val next = if (current == normalized) urls.first() else current
+        prefs.edit { p ->
+            p[Keys.SERVER_URL] = next
+            p[Keys.SERVER_URLS] = urls.joinToString("\n")
+        }
+        snapshot = snapshot.copy(serverUrl = next, serverUrls = urls)
+    }
+
     suspend fun clear() {
         prefs.edit { p ->
             p.remove(Keys.AUTH_KEY)

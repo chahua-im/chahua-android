@@ -66,7 +66,13 @@ fun UserAvatar(
                     Modifier
                 },
             )
-            .clickable(enabled = onClick != null, onClick = { onClick?.invoke() }),
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable { onClick?.invoke() }
+                } else {
+                    Modifier
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) {
         if (!url.isNullOrBlank()) {

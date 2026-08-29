@@ -131,6 +131,22 @@ class ChatStore {
         }
     }
 
+    /** 收藏/取消收藏贴纸后，同步更新本地所有包含该贴纸的消息。 */
+    fun applyStickerFavorite(stickerId: String, favorite: Boolean) {
+        _messages.update { current ->
+            current.mapValues { (_, list) ->
+                list.map { message ->
+                    val sticker = message.sticker
+                    if (sticker != null && sticker.id == stickerId) {
+                        message.copy(sticker = sticker.copy(isFavorited = favorite))
+                    } else {
+                        message
+                    }
+                }
+            }
+        }
+    }
+
     fun onMessageDeleted(chatId: String, threadId: String?, messageId: String) {
         val key = timelineKey(chatId, threadId)
         _messages.update { current ->
@@ -208,7 +224,7 @@ class ChatStore {
         _chats.update { chats -> chats.filterNot { it.id == chatId } }
         _threads.update { threads -> threads.filterNot { it.chatId == chatId } }
         _messages.update { messages ->
-            messages.filterKeys { key -> key == chatId || key.startsWith("$chatId:") }
+            messages.filterKeys { key -> key != chatId && !key.startsWith("$chatId:") }
         }
     }
 

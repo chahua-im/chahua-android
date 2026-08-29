@@ -36,6 +36,7 @@ enum class AppLanguage(val code: String, val displayNameRes: Int) {
 
 enum class ThemeColorOption(val key: String, val displayNameRes: Int) {
     SYSTEM("system", net.paigu.chahua.R.string.settings_theme_system),
+    CUSTOM("custom", net.paigu.chahua.R.string.settings_theme_custom),
     GREEN("green", net.paigu.chahua.R.string.settings_theme_green),
     BLUE("blue", net.paigu.chahua.R.string.settings_theme_blue),
     PURPLE("purple", net.paigu.chahua.R.string.settings_theme_purple),
@@ -45,6 +46,17 @@ enum class ThemeColorOption(val key: String, val displayNameRes: Int) {
 
     companion object {
         fun from(key: String): ThemeColorOption = entries.firstOrNull { it.key == key } ?: SYSTEM
+    }
+}
+
+enum class ThemeModeOption(val key: String, val displayNameRes: Int) {
+    SYSTEM("system", net.paigu.chahua.R.string.settings_theme_mode_system),
+    LIGHT("light", net.paigu.chahua.R.string.settings_theme_mode_light),
+    DARK("dark", net.paigu.chahua.R.string.settings_theme_mode_dark),
+    ;
+
+    companion object {
+        fun from(key: String): ThemeModeOption = entries.firstOrNull { it.key == key } ?: SYSTEM
     }
 }
 
@@ -62,8 +74,11 @@ enum class FontSizeOption(val key: String, val scale: Float, val displayNameRes:
 
 data class AppSettings(
     val showAllTab: Boolean = false,
+    val hideThreadsInAllTab: Boolean = false,
     val fontSizeKey: String = FontSizeOption.NORMAL.key,
     val themeColor: String = ThemeColorOption.SYSTEM.key,
+    val customThemeColor: String = "",
+    val themeMode: String = ThemeModeOption.SYSTEM.key,
     val language: String = AppLanguage.SYSTEM.code,
     val notificationsEnabled: Boolean = true,
     val enterToSend: Boolean = true,
@@ -89,8 +104,11 @@ class SettingsManager(context: Context) {
 
     private object Keys {
         val SHOW_ALL_TAB = booleanPreferencesKey("show_all_tab")
+        val HIDE_THREADS_IN_ALL_TAB = booleanPreferencesKey("hide_threads_in_all_tab")
         val FONT_SIZE = stringPreferencesKey("font_size")
         val THEME_COLOR = stringPreferencesKey("theme_color")
+        val CUSTOM_THEME_COLOR = stringPreferencesKey("custom_theme_color")
+        val THEME_MODE = stringPreferencesKey("theme_mode")
         val LANGUAGE = stringPreferencesKey("language")
         val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
         val ENTER_TO_SEND = booleanPreferencesKey("enter_to_send")
@@ -115,8 +133,11 @@ class SettingsManager(context: Context) {
     val settingsState: Flow<AppSettings> = prefs.data.map { p ->
         AppSettings(
             showAllTab = p[Keys.SHOW_ALL_TAB] ?: false,
+            hideThreadsInAllTab = p[Keys.HIDE_THREADS_IN_ALL_TAB] ?: false,
             fontSizeKey = p[Keys.FONT_SIZE] ?: FontSizeOption.NORMAL.key,
             themeColor = p[Keys.THEME_COLOR] ?: ThemeColorOption.SYSTEM.key,
+            customThemeColor = p[Keys.CUSTOM_THEME_COLOR] ?: "",
+            themeMode = p[Keys.THEME_MODE] ?: ThemeModeOption.SYSTEM.key,
             language = p[Keys.LANGUAGE] ?: AppLanguage.SYSTEM.code,
             notificationsEnabled = p[Keys.NOTIFICATIONS_ENABLED] ?: true,
             enterToSend = p[Keys.ENTER_TO_SEND] ?: true,
@@ -175,6 +196,11 @@ class SettingsManager(context: Context) {
         snapshot = snapshot.copy(showAllTab = enabled)
     }
 
+    suspend fun setHideThreadsInAllTab(enabled: Boolean) {
+        prefs.edit { it[Keys.HIDE_THREADS_IN_ALL_TAB] = enabled }
+        snapshot = snapshot.copy(hideThreadsInAllTab = enabled)
+    }
+
     suspend fun setFontSize(key: String) {
         val normalized = FontSizeOption.from(key).key
         prefs.edit { it[Keys.FONT_SIZE] = normalized }
@@ -185,6 +211,18 @@ class SettingsManager(context: Context) {
         val normalized = ThemeColorOption.from(key).key
         prefs.edit { it[Keys.THEME_COLOR] = normalized }
         snapshot = snapshot.copy(themeColor = normalized)
+    }
+
+    suspend fun setCustomThemeColor(hex: String) {
+        val normalized = hex.trim().removePrefix("#")
+        prefs.edit { it[Keys.CUSTOM_THEME_COLOR] = normalized }
+        snapshot = snapshot.copy(customThemeColor = normalized)
+    }
+
+    suspend fun setThemeMode(key: String) {
+        val normalized = ThemeModeOption.from(key).key
+        prefs.edit { it[Keys.THEME_MODE] = normalized }
+        snapshot = snapshot.copy(themeMode = normalized)
     }
 
     suspend fun setLanguage(code: String) {

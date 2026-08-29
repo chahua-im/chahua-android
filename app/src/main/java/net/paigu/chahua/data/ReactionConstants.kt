@@ -22,7 +22,7 @@ val DEFAULT_PINNED_REACTIONS: List<String> = listOf("\uD83D\uDC4D")
 val DEFAULT_RECENT_REACTIONS: List<String> =
     listOf("\u2764\uFE0F", "\uD83D\uDE02", "\uD83D\uDE2E", "\uD83D\uDE22", "\uD83C\uDF89")
 
-/** 长按菜单“+”打开的更多 emoji 候选。 */
+/** 长按菜单“+”打开的更多 emoji 候选。（已废弃） */
 val REACTION_EMOJI_CHOICES: List<String> = listOf(
     "\uD83D\uDC4D", "\uD83D\uDC4E", "\u2764\uFE0F", "\uD83D\uDE02", "\uD83D\uDE2E",
     "\uD83D\uDE22", "\uD83C\uDF89", "\uD83D\uDD25",

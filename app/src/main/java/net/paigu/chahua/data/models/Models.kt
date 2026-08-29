@@ -13,6 +13,24 @@ data class UserDto(
     val userGroup: UserGroupTagDto? = null,
 )
 
+/** 会话/群组信息中的对端用户摘要（MemberSummary，字段名为 username）。 */
+@Serializable
+data class MemberSummaryDto(
+    val uid: Int,
+    val username: String? = null,
+    val avatarUrl: String? = null,
+    val gender: Int = 0,
+    val userGroup: UserGroupTagDto? = null,
+) {
+    fun toUserDto(): UserDto = UserDto(
+        uid = uid,
+        avatarUrl = avatarUrl,
+        name = username,
+        gender = gender,
+        userGroup = userGroup,
+    )
+}
+
 @Serializable
 data class UserGroupTagDto(
     val groupId: Int,
@@ -101,7 +119,17 @@ data class ChatDto(
     val lastMessage: MessagePreviewDto? = null,
     val mutedUntil: String? = null,
     val archived: Boolean = false,
+    val kind: String = "group",
+    /** DM 会话中的对端用户；普通群聊为 null。 */
+    val peer: MemberSummaryDto? = null,
 )
+
+/** 会话是否为 DM（私聊）。 */
+val ChatDto.isDm: Boolean get() = kind == "dm"
+
+/** DM 会话的展示名称：优先对端用户名，其次群名。 */
+val ChatDto.displayName: String?
+    get() = if (isDm) peer?.username?.takeIf { it.isNotBlank() } ?: name else name
 
 @Serializable
 data class ListChatsResponse(
@@ -281,6 +309,109 @@ data class StickerPackDetailResponse(
     val stickers: List<StickerSummaryDto> = emptyList(),
 )
 
+/** GET /stickers/{sticker_id} 响应：贴纸详情（展平 StickerSummary）+ 所属贴纸包。 */
+@Serializable
+data class StickerDetailResponse(
+    val id: String,
+    val media: StickerMediaDto,
+    val emoji: String = "",
+    val name: String? = null,
+    val description: String? = null,
+    val createdAt: String? = null,
+    val isFavorited: Boolean = false,
+    val packs: List<StickerPackSummaryDto> = emptyList(),
+)
+
+/** 好友验证设置（GET/PUT /friends/me/settings）。mode: direct | need_message | question | forbid。 */
+@Serializable
+data class FriendSettingsResponse(
+    val mode: String = "direct",
+    val question: String? = null,
+)
+
+@Serializable
+data class UpdateFriendSettingsBody(
+    val mode: String,
+    val question: String? = null,
+)
+
+/** 好友列表项，对应 FriendResponse。 */
+@Serializable
+data class FriendResponse(
+    val user: MemberSummaryDto,
+    val since: String? = null,
+)
+
+@Serializable
+data class ListFriendsResponse(
+    val friends: List<FriendResponse> = emptyList(),
+)
+
+/** 好友请求记录，对应 FriendRequestResponse。 */
+@Serializable
+data class FriendRequestDto(
+    val id: String,
+    val from: MemberSummaryDto,
+    val to: MemberSummaryDto,
+    val status: String = "pending",
+    val createdAt: String? = null,
+    val decidedAt: String? = null,
+    /** 验证消息（need_message）或请求者答案（question）。 */
+    val message: String? = null,
+    /** 目标用户设置的问题（question 模式）。 */
+    val question: String? = null,
+)
+
+/** 好友请求历史条目：服务端将请求字段展平并与 direction 并列返回。 */
+@Serializable
+data class FriendRequestHistoryEntryDto(
+    val id: String,
+    val from: MemberSummaryDto,
+    val to: MemberSummaryDto,
+    val status: String = "pending",
+    val createdAt: String? = null,
+    val decidedAt: String? = null,
+    val message: String? = null,
+    val question: String? = null,
+    val direction: String = "incoming",
+) {
+    val request: FriendRequestDto
+        get() = FriendRequestDto(
+            id = id,
+            from = from,
+            to = to,
+            status = status,
+            createdAt = createdAt,
+            decidedAt = decidedAt,
+            message = message,
+            question = question,
+        )
+}
+
+@Serializable
+data class ListFriendRequestHistoryResponse(
+    val requests: List<FriendRequestHistoryEntryDto> = emptyList(),
+)
+
+@Serializable
+data class PendingFriendRequestCountResponse(
+    val pendingIncomingCount: Long = 0,
+)
+
+/** 目标用户的好友验证信息（GET /friends/add-info/{uid}）。 */
+@Serializable
+data class FriendAddInfoResponse(
+    val mode: String = "direct",
+    val question: String? = null,
+)
+
+/** 发送好友请求（POST /friends/requests）。 */
+@Serializable
+data class CreateFriendRequestBody(
+    val toUid: Int,
+    val message: String? = null,
+)
+
 @Serializable
 data class CreateStickerPackBody(
     val name: String,
@@ -383,6 +514,9 @@ data class GroupInfoDto(
     val createdAt: String? = null,
     val mutedUntil: String? = null,
     val myRole: String? = null,
+    val kind: String = "group",
+    /** DM 会话中的对端用户；普通群聊为 null。 */
+    val peer: MemberSummaryDto? = null,
 )
 
 @Serializable

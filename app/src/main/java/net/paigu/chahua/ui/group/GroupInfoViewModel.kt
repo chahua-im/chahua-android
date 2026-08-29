@@ -482,6 +482,32 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.value = _uiState.value.copy(error = null, searchError = null)
     }
 
+    /** 从成员资料发起私聊：查找与 uid 的既有 DM 会话并跳转。 */
+    fun openDmWith(
+        uid: Int,
+        onFound: (chatId: String, title: String) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        viewModelScope.launch {
+            runCatching {
+                store.chats.value.firstOrNull { it.kind == "dm" && it.peer?.uid == uid }
+                    ?: api.chats(limit = 100).chats
+                        .firstOrNull { it.kind == "dm" && it.peer?.uid == uid }
+            }
+                .onSuccess { dm ->
+                    if (dm == null) {
+                        onError(getString(R.string.chat_dm_unavailable))
+                    } else {
+                        onFound(
+                            dm.id,
+                            dm.peer?.username?.takeIf { it.isNotBlank() } ?: dm.name ?: dm.id,
+                        )
+                    }
+                }
+                .onFailure { onError(it.message ?: getString(R.string.chat_dm_unavailable)) }
+        }
+    }
+
     fun isMuted(): Boolean = isMutedUntil(_uiState.value.info?.mutedUntil)
 
     private fun isMutedUntil(mutedUntil: String?): Boolean {

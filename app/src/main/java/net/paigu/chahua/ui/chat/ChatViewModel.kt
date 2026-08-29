@@ -2,25 +2,8 @@ package net.paigu.chahua.ui.chat
 
 import android.app.Application
 import android.graphics.BitmapFactory
-import android.media.MediaCodecInfo
-import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.OpenableColumns
-import androidx.media3.common.Effect
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MimeTypes
-import androidx.media3.common.audio.AudioProcessor
-import androidx.media3.effect.Presentation
-import androidx.media3.transformer.AudioEncoderSettings
-import androidx.media3.transformer.Composition
-import androidx.media3.transformer.DefaultEncoderFactory
-import androidx.media3.transformer.EditedMediaItem
-import androidx.media3.transformer.EncoderSelector
-import androidx.media3.transformer.ExportException
-import androidx.media3.transformer.ExportResult
-import androidx.media3.transformer.Effects
-import androidx.media3.transformer.Transformer
-import androidx.media3.transformer.VideoEncoderSettings
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
@@ -33,11 +16,14 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.paigu.chahua.data.models.MessageDto
+import net.paigu.chahua.data.models.MemberSummaryDto
+import net.paigu.chahua.data.models.FriendAddInfoResponse
 import net.paigu.chahua.data.models.PinDto
 import net.paigu.chahua.data.models.ReactionDto
 import net.paigu.chahua.data.models.ReactionDetailResponse
 import net.paigu.chahua.data.models.StickerPackDetailResponse
 import net.paigu.chahua.data.models.StickerPackSummaryDto
+import net.paigu.chahua.data.models.StickerDetailResponse
 import net.paigu.chahua.data.models.StickerSummaryDto
 import net.paigu.chahua.data.models.UploadUrlRequest
 import net.paigu.chahua.data.models.UserDto
@@ -45,70 +31,9 @@ import net.paigu.chahua.data.MAX_DISTINCT_REACTIONS_PER_MESSAGE
 import net.paigu.chahua.data.MAX_REACTIONS_PER_USER_PER_MESSAGE
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.R
-import java.io.File
+import net.paigu.chahua.ui.media.VideoCompressor
 import java.time.Instant
 import java.util.UUID
-import kotlin.math.roundToInt
-
-/** 输入框中待发送的附件草稿。 */
-data class DraftAttachment(
-    val uriString: String,
-    val mimeType: String,
-    val fileName: String,
-    val kind: String, // image | video | file
-    val compressVideo: Boolean = false,
-)
-
-private data class VideoSourceInfo(
-    val width: Int,
-    val height: Int,
-    val frameRate: Int,
-)
-
-data class PendingMessage(
-    val clientGeneratedId: String,
-    val text: String?,
-    val attachmentLocalUri: String?,
-    val createdAt: String,
-    val replyToId: String?,
-    val attachmentKind: String = "image",
-    val sticker: StickerSummaryDto? = null,
-)
-
-sealed interface ChatItem {
-    val sortKey: String
-
-    data class Server(val message: MessageDto) : ChatItem {
-        override val sortKey: String get() = message.createdAt ?: message.id
-    }
-
-    data class Pending(val pending: PendingMessage) : ChatItem {
-        override val sortKey: String get() = pending.createdAt
-    }
-}
-
-data class ChatUiState(
-    val loading: Boolean = false,
-    val loadingOlder: Boolean = false,
-    val error: String? = null,
-    val replyTarget: MessageDto? = null,
-    val threadMode: Boolean = false,
-    val threadReplyCount: Long = 0,
-    val title: String = "",
-    val scrollToMessageId: String? = null,
-    val myRole: String? = null,
-    val pins: List<PinDto> = emptyList(),
-)
-
-data class StickerPanelUiState(
-    val favorites: List<StickerSummaryDto> = emptyList(),
-    val packs: List<StickerPackSummaryDto> = emptyList(),
-    val details: Map<String, StickerPackDetailResponse> = emptyMap(),
-    val selectedPackId: String? = null,
-    val loadingPacks: Boolean = false,
-    val loadingPackId: String? = null,
-    val error: String? = null,
-)
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -122,11 +47,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(ChatUiState())
     private val _messages = MutableStateFlow<List<ChatItem>>(emptyList())
     private val _stickerPanel = MutableStateFlow(StickerPanelUiState())
+    private val _stickerPreview = MutableStateFlow(StickerPreviewUiState())
     private val _mentionCandidates = MutableStateFlow<List<UserDto>>(emptyList())
 
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
     val messages: StateFlow<List<ChatItem>> = _messages.asStateFlow()
     val stickerPanel: StateFlow<StickerPanelUiState> = _stickerPanel.asStateFlow()
+    val stickerPreview: StateFlow<StickerPreviewUiState> = _stickerPreview.asStateFlow()
     val mentionCandidates: StateFlow<List<UserDto>> = _mentionCandidates.asStateFlow()
     val connectionState = store.connectionState
     val latencyMs = AppGraph.engine.latencyMs
@@ -166,18 +93,25 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 store.messagesFor(chatId, threadId),
                 _pending,
             ) { serverList, pendingList ->
-                val serverCgids = serverList.mapTo(HashSet()) { it.clientGeneratedId }
-                val pending = pendingList.filterNot { it.clientGeneratedId in serverCgids }
-                (serverList.filterNot { it.isDeleted }.map { ChatItem.Server(it) as ChatItem } +
-                    pending.map { ChatItem.Pending(it) as ChatItem })
-                    .sortedBy { it.sortKey }
+                mergeChatItems(serverList, pendingList)
             }.collect { _messages.value = it }
         }
         // 群角色用于置顶等管理员操作，置顶列表用于横幅与取消置顶。
         viewModelScope.launch {
             runCatching { api.groupInfo(chatId) }
                 .onSuccess { info ->
-                    _uiState.value = _uiState.value.copy(myRole = info.myRole)
+                    val dmTitle = if (info.kind == "dm") {
+                        info.peer?.username?.takeIf { it.isNotBlank() }
+                            ?: getString(R.string.chat_dm_user, info.peer?.uid ?: 0)
+                    } else {
+                        null
+                    }
+                    _uiState.value = _uiState.value.copy(
+                        myRole = info.myRole,
+                        isDm = info.kind == "dm",
+                        peer = info.peer,
+                        title = dmTitle ?: if (title.isBlank() || title == chatId) info.name else title,
+                    )
                 }
             refreshPins(chatId)
         }
@@ -252,6 +186,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
             result
                 .onSuccess {
+                    store.applyStickerFavorite(stickerId, favorite)
+                    val panel = _stickerPanel.value
+                    _stickerPanel.value = if (favorite) {
+                        panel.copy(
+                            favorites = panel.favorites + listOfNotNull(findStickerSummary(stickerId)),
+                        )
+                    } else {
+                        panel.copy(
+                            favorites = panel.favorites.filterNot { it.id == stickerId },
+                        )
+                    }
                     onDone(
                         getString(
                             if (favorite) {
@@ -264,6 +209,183 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 .onFailure { onError(it.message ?: getString(R.string.chat_action_failed)) }
         }
+    }
+
+    // ---- 聊天内贴纸预览 ----
+
+    /** 打开贴纸预览并加载贴纸详情（含所属贴纸包）。 */
+    fun loadStickerPreview(stickerId: String) {
+        val current = _stickerPreview.value
+        if (current.stickerId == stickerId && current.detail != null) return
+        _stickerPreview.value = StickerPreviewUiState(stickerId = stickerId, loading = true)
+        viewModelScope.launch {
+            runCatching { api.stickerDetail(stickerId) }
+                .onSuccess { detail ->
+                    _stickerPreview.value = StickerPreviewUiState(
+                        stickerId = stickerId,
+                        detail = detail,
+                        subscribed = detail.packs.firstOrNull()?.isSubscribed == true,
+                    )
+                }
+                .onFailure {
+                    _stickerPreview.value = StickerPreviewUiState(
+                        stickerId = stickerId,
+                        error = it.message ?: getString(R.string.chat_action_failed),
+                    )
+                }
+        }
+    }
+
+    fun dismissStickerPreview() {
+        _stickerPreview.value = StickerPreviewUiState()
+    }
+
+    /** 预览内收藏 / 取消收藏（乐观更新，失败回滚）。 */
+    fun toggleStickerFavoriteFromPreview() {
+        val state = _stickerPreview.value
+        val detail = state.detail ?: return
+        if (state.busyFavorite) return
+        val favorite = !detail.isFavorited
+        _stickerPreview.value = state.copy(
+            busyFavorite = true,
+            detail = detail.copy(isFavorited = favorite),
+        )
+        viewModelScope.launch {
+            runCatching {
+                if (favorite) api.favoriteSticker(detail.id)
+                else api.unfavoriteSticker(detail.id)
+            }
+                .onSuccess {
+                    store.applyStickerFavorite(detail.id, favorite)
+                    val panel = _stickerPanel.value
+                    _stickerPanel.value = if (favorite) {
+                        panel.copy(
+                            favorites = panel.favorites + StickerSummaryDto(
+                                id = detail.id,
+                                media = detail.media,
+                                emoji = detail.emoji,
+                                name = detail.name,
+                                description = detail.description,
+                                createdAt = detail.createdAt,
+                                isFavorited = true,
+                            ),
+                        )
+                    } else {
+                        panel.copy(
+                            favorites = panel.favorites.filterNot { it.id == detail.id },
+                        )
+                    }
+                    _stickerPreview.value = _stickerPreview.value.copy(busyFavorite = false)
+                }
+                .onFailure {
+                    _stickerPreview.value = _stickerPreview.value.copy(
+                        busyFavorite = false,
+                        detail = detail,
+                        error = it.message ?: getString(R.string.chat_action_failed),
+                    )
+                }
+        }
+    }
+
+    /** 预览内订阅 / 取消订阅第一个所属贴纸包（乐观更新，失败回滚）。 */
+    fun toggleStickerPackSubscriptionFromPreview() {
+        val state = _stickerPreview.value
+        val pack = state.detail?.packs?.firstOrNull() ?: return
+        if (state.busySubscribe) return
+        val subscribed = !state.subscribed
+        _stickerPreview.value = state.copy(
+            busySubscribe = true,
+            subscribed = subscribed,
+        )
+        viewModelScope.launch {
+            runCatching {
+                if (subscribed) api.subscribeStickerPack(pack.id)
+                else api.unsubscribeStickerPack(pack.id)
+            }
+                .onSuccess {
+                    _stickerPanel.value = _stickerPanel.value.copy(
+                        packs = _stickerPanel.value.packs.map {
+                            if (it.id == pack.id) it.copy(isSubscribed = subscribed) else it
+                        },
+                    )
+                    _stickerPreview.value = _stickerPreview.value.copy(busySubscribe = false)
+                }
+                .onFailure {
+                    _stickerPreview.value = _stickerPreview.value.copy(
+                        busySubscribe = false,
+                        subscribed = state.subscribed,
+                        error = it.message ?: getString(R.string.chat_action_failed),
+                    )
+                }
+        }
+    }
+
+    /** 从用户资料弹窗发起私聊：查找与 uid 的既有 DM 会话并跳转。 */
+    fun openDmWith(
+        uid: Int,
+        onFound: (chatId: String, title: String) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        viewModelScope.launch {
+            runCatching {
+                store.chats.value.firstOrNull { it.kind == "dm" && it.peer?.uid == uid }
+                    ?: api.chats(limit = 100).chats
+                        .firstOrNull { it.kind == "dm" && it.peer?.uid == uid }
+            }
+                .onSuccess { dm ->
+                    if (dm == null) {
+                        onError(getString(R.string.chat_dm_unavailable))
+                    } else {
+                        onFound(
+                            dm.id,
+                            dm.peer?.username?.takeIf { it.isNotBlank() } ?: dm.name ?: dm.id,
+                        )
+                    }
+                }
+                .onFailure { onError(it.message ?: getString(R.string.chat_dm_unavailable)) }
+        }
+    }
+
+    /** 判断 uid 是否已经是当前用户的好友。 */
+    fun isFriendWith(uid: Int, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val isFriend = runCatching { api.friends().friends }
+                .getOrNull()
+                ?.any { it.user.uid == uid } == true
+            onResult(isFriend)
+        }
+    }
+
+    /** 目标用户的好友验证要求；失败返回 null。 */
+    suspend fun friendAddInfo(uid: Int): FriendAddInfoResponse? =
+        runCatching { api.friendAddInfo(uid) }.getOrNull()
+
+    /** 发送好友请求；成功返回 true，失败时写入错误信息并返回 false。 */
+    suspend fun sendFriendRequest(uid: Int, message: String?): Boolean {
+        return runCatching { api.createFriendRequest(uid, message) }
+            .onFailure {
+                _uiState.value = _uiState.value.copy(
+                    error = it.message ?: getString(R.string.chat_action_failed),
+                )
+            }
+            .isSuccess
+    }
+
+    /** 根据当前消息缓存构造贴纸摘要（用于收藏后同步到收藏面板）。 */
+    private fun findStickerSummary(stickerId: String): StickerSummaryDto? {
+        val message = _messages.value.asSequence()
+            .mapNotNull { (it as? ChatItem.Server)?.message }
+            .firstOrNull { it.sticker?.id == stickerId }
+        val media = message?.sticker?.media ?: return null
+        return StickerSummaryDto(
+            id = stickerId,
+            media = media,
+            emoji = message.sticker?.emoji.orEmpty(),
+            name = message.sticker?.name,
+            description = message.sticker?.description,
+            createdAt = message.sticker?.createdAt,
+            isFavorited = true,
+        )
     }
 
     fun loadMessages() {
@@ -473,12 +595,25 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         contentLength = fileSize.takeIf { it > 0 },
                     )
                 }
+                // 后端规则：text 消息只能带图片/视频；普通文件必须用 file 消息类型，
+                // 且 file 消息不能附带文字。因此文件+文字时先单独发送文字，再发送文件。
+                val isFile = attachment.kind == "file"
+                if (isFile && text.isNotBlank()) {
+                    engine.sendMessage(
+                        chatId = chatId,
+                        text = text.trim(),
+                        replyToId = reply?.id,
+                        replyRootId = threadId,
+                        clientGeneratedId = "android-${UUID.randomUUID()}",
+                    )
+                }
                 engine.sendMessage(
                     chatId = chatId,
-                    text = text.ifBlank { null },
+                    text = if (isFile) null else text.ifBlank { null },
                     replyToId = reply?.id,
                     replyRootId = threadId,
                     attachmentIds = listOf(upload.attachmentId),
+                    messageType = if (isFile) "file" else "text",
                     clientGeneratedId = created.clientGeneratedId,
                 )
                     .onSuccess { removePending(created.clientGeneratedId) }
@@ -530,78 +665,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     /** 压缩视频到本地缓存，完成后通过回调返回 file:// Uri。 */
     fun compressVideo(uriString: String, onReady: (String) -> Unit, onError: (String) -> Unit) {
-        viewModelScope.launch {
-            runCatching {
-                val context = getApplication<Application>()
-                val uri = Uri.parse(uriString)
-                val videoInfo = queryVideoInfo(uri)
-                val frameRate = (videoInfo?.frameRate ?: 30).coerceIn(1, 60)
-                val presentation = if (videoInfo != null) {
-                    val scale = minOf(1.0, 1920.0 / maxOf(videoInfo.width, videoInfo.height))
-                    val outputWidth = (videoInfo.width * scale).roundToInt().coerceAtLeast(2)
-                    val outputHeight = (videoInfo.height * scale).roundToInt().coerceAtLeast(2)
-                    Presentation.createForWidthAndHeight(
-                        outputWidth,
-                        outputHeight,
-                        Presentation.LAYOUT_SCALE_TO_FIT,
-                    )
-                } else {
-                    Presentation.createForShortSide(1080)
-                }
-                val effects = Effects(
-                    emptyList<AudioProcessor>(),
-                    listOf<Effect>(presentation),
-                )
-                val videoSettings = VideoEncoderSettings.Builder()
-                    .setBitrate(10 * 1000 * 1000)
-                    .setBitrateMode(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
-                    .setiFrameIntervalSeconds(1f)
-                    .setMaxBFrames(0)
-                    .build()
-                val audioSettings = AudioEncoderSettings.Builder()
-                    .setBitrate(128 * 1024)
-                    .build()
-                val encoderFactory = DefaultEncoderFactory.Builder(context)
-                    .setVideoEncoderSelector(EncoderSelector.DEFAULT)
-                    .setRequestedVideoEncoderSettings(videoSettings)
-                    .setRequestedAudioEncoderSettings(audioSettings)
-                    .setEnableFallback(true)
-                    .build()
-                val outputDir = File(context.cacheDir, "compressed_videos").apply { mkdirs() }
-                val output = File(outputDir, "compressed_${System.currentTimeMillis()}.mp4")
-                val transformer = Transformer.Builder(context)
-                    .setEncoderFactory(encoderFactory)
-                    .setVideoMimeType(MimeTypes.VIDEO_H264)
-                    .setAudioMimeType(MimeTypes.AUDIO_AAC)
-                    .addListener(object : Transformer.Listener {
-                        override fun onCompleted(composition: Composition, exportResult: ExportResult) {
-                            viewModelScope.launch {
-                                onReady(Uri.fromFile(output).toString())
-                            }
-                        }
-
-                        override fun onError(
-                            composition: Composition,
-                            exportResult: ExportResult,
-                            exception: ExportException,
-                        ) {
-                            viewModelScope.launch {
-                                onError(exception.message ?: "compress failed")
-                            }
-                        }
-                    })
-                    .build()
-                transformer.start(
-                    EditedMediaItem.Builder(MediaItem.fromUri(uriString))
-                        .setFrameRate(frameRate)
-                        .setEffects(effects)
-                        .build(),
-                    output.absolutePath,
-                )
-            }.onFailure {
-                onError(it.message ?: "compress failed")
-            }
-        }
+        VideoCompressor.compress(getApplication(), uriString, viewModelScope, onReady, onError)
     }
 
     // ---- 表情面板 ----
@@ -699,17 +763,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearMentionCandidates() {
         _mentionCandidates.value = emptyList()
-    }
-
-    private fun sortPacksByOrder(
-        packs: List<StickerPackSummaryDto>,
-        order: List<net.paigu.chahua.data.models.StickerPackOrderItemDto>,
-    ): List<StickerPackSummaryDto> {
-        val usedAt = order.associate { it.stickerPackId to it.lastUsedOn }
-        return packs.sortedWith(
-            compareByDescending<StickerPackSummaryDto> { usedAt[it.id] ?: Long.MIN_VALUE }
-                .thenBy { it.name },
-        )
     }
 
     private fun removePending(clientGeneratedId: String?) {
@@ -1009,41 +1062,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     }
         } catch (e: Exception) {
             null
-        }
-    }
-
-    private fun queryVideoInfo(uri: Uri): VideoSourceInfo? {
-        val retriever = MediaMetadataRetriever()
-        return try {
-            retriever.setDataSource(getApplication<Application>(), uri)
-            var width = retriever
-                .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
-                ?.toIntOrNull()
-                ?: return null
-            var height = retriever
-                .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
-                ?.toIntOrNull()
-                ?: return null
-            if (width <= 0 || height <= 0) return null
-            val rotation = retriever
-                .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
-                ?.toIntOrNull()
-                ?: 0
-            if (rotation == 90 || rotation == 270) {
-                val temp = width
-                width = height
-                height = temp
-            }
-            val frameRate = retriever
-                .extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
-                ?.toFloatOrNull()
-                ?.roundToInt()
-                ?: 30
-            VideoSourceInfo(width = width, height = height, frameRate = frameRate)
-        } catch (e: Exception) {
-            null
-        } finally {
-            runCatching { retriever.release() }
         }
     }
 
