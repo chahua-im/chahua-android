@@ -77,20 +77,28 @@ jobs:
           "$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner" verify --verbose \
             app/build/outputs/apk/release/app-release.apk
 
-      # 10. 将最终的 APK 上传为工作流产物 (Artifact)，方便手动下载
+      # 10. 重命名 APK，文件名带上版本号（取自标签名，如 app-release-v1.2.1.apk）
+      - name: Rename APK with version
+        run: |
+          VERSION="${{ github.ref_name }}"
+          mv app/build/outputs/apk/release/app-release.apk \
+             "app/build/outputs/apk/release/app-release-${VERSION}.apk"
+          echo "APK_NAME=app-release-${VERSION}.apk" >> "$GITHUB_ENV"
+
+      # 11. 将最终的 APK 上传为工作流产物 (Artifact)，方便手动下载
       - name: Upload APK as Artifact
         uses: actions/upload-artifact@v4
         with:
           name: signed-apk
-          path: app/build/outputs/apk/release/app-release.apk
+          path: app/build/outputs/apk/release/${{ env.APK_NAME }}
 
-      # 11. (可选) 自动创建 GitHub Release 并上传 APK
+      # 12. (可选) 自动创建 GitHub Release 并上传 APK
       #     仅当推送标签 (v*) 时触发，手动触发时跳过
       - name: Create Release and Upload APK
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: app/build/outputs/apk/release/app-release.apk
+          files: app/build/outputs/apk/release/${{ env.APK_NAME }}
           # 可选的 Release 标题和正文（取消注释即可使用）
           # name: "Release ${{ github.ref_name }}"
           # body: "自动构建的 Release 版本"
