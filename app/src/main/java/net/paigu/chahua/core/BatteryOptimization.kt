@@ -24,4 +24,12 @@ object BatteryOptimization {
             .setData(Uri.parse("package:${context.packageName}"))
         runCatching { context.startActivity(intent) }
     }
+
+    /** 跳转系统“电池优化”设置页，由用户手动关闭本应用的电池优化。 */
+    fun openSettings(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        runCatching {
+            context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        }
+    }
 }

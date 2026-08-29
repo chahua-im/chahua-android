@@ -224,6 +224,7 @@ private fun SettingsScreen(
     val uiState by viewModel.uiState.collectAsState()
     val sessionState by viewModel.sessionState.collectAsState(initial = SessionManager.SessionState())
     val settings by viewModel.settingsState.collectAsState(initial = AppGraph.settings.snapshot())
+    val updateState by viewModel.updateState.collectAsState()
     val context = LocalContext.current
 
     var pageName by rememberSaveable { mutableStateOf(SettingsPage.HOME.name) }
@@ -271,6 +272,10 @@ private fun SettingsScreen(
         SettingsPage.HOME -> HomeScreen(
             sessionState = sessionState,
             developerEnabled = settings.developerEnabled,
+            updateState = updateState,
+            onCheckForUpdates = viewModel::checkForUpdates,
+            onDismissUpdateDialog = viewModel::dismissUpdateDialog,
+            onDismissUpdateMessage = viewModel::dismissUpdateMessage,
             onOpenGeneral = { navigate(SettingsPage.GENERAL) },
             onOpenSavedMessages = { navigate(SettingsPage.SAVED_MESSAGES) },
             onOpenAppearance = { navigate(SettingsPage.APPEARANCE) },
