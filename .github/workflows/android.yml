@@ -6,7 +6,7 @@ on:
   push:
     tags:
       - 'v*'
-  # 2. 允许你从 GitHub 页面手动触发
+  # 2. 允许你从 GitHub 页面手动触发（但手动触发不会自动创建 Release）
   workflow_dispatch:
 
 jobs:
@@ -19,27 +19,31 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. 设置 Java 环境 (通常需要 Java 11 或 17)[reference:18]
+      # 2. 设置 Java 环境 (Android 构建通常需要 Java 11 或 17)
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # 3. 设置 Gradle 缓存以加速构建[reference:19]
+      # 3. 设置 Gradle 缓存以加速后续构建
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # 4. 从 Secret 解码并还原 Keystore 文件[reference:20]
+      # 4. 从 Secret 解码并还原 Keystore 文件
       - name: Decode Keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.jks
 
-      # 5. 执行 Release 构建 (会生成未签名的 APK)
+      # 5. 修复 gradlew 执行权限（避免 Permission denied）
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      # 6. 执行 Release 构建 (会生成未签名的 APK)
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
-      # 6. 使用 jarsigner 对 APK 进行签名[reference:21]
+      # 7. 使用 jarsigner 对 APK 进行签名
       - name: Sign APK
         run: |
           jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
@@ -49,16 +53,35 @@ jobs:
             app/build/outputs/apk/release/*-release-unsigned.apk \
             ${{ secrets.KEY_ALIAS }}
 
-      # 7. (可选但推荐) 使用 zipalign 对齐 APK，优化运行效率[reference:22]
+      # 8. 使用 zipalign 对齐 APK (优化运行效率)
+      #    注意：请根据你项目使用的 Android SDK build-tools 版本调整路径。
+      #    一般通过 ANDROID_HOME 环境变量定位，以下写法自动寻找最高版本。
       - name: Align APK
         run: |
-          $ANDROID_HOME/build-tools/34.0.0/zipalign -v 4 \
+          # 查找最新的 build-tools 目录
+          BUILD_TOOLS=$(ls $ANDROID_HOME/build-tools | sort -V | tail -n 1)
+          $ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign -v 4 \
             app/build/outputs/apk/release/*-release-unsigned.apk \
             app/build/outputs/apk/release/app-release.apk
 
-      # 8. 将最终的 APK 上传为工作流产物 (Artifact)，方便下载[reference:23]
+      # 9. 将最终的 APK 上传为工作流产物 (Artifact)，方便手动下载
       - name: Upload APK as Artifact
         uses: actions/upload-artifact@v4
         with:
           name: signed-apk
           path: app/build/outputs/apk/release/app-release.apk
+
+      # 10. (可选) 自动创建 GitHub Release 并上传 APK
+      #     仅当推送标签 (v*) 时触发，手动触发时跳过
+      - name: Create Release and Upload APK
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: app/build/outputs/apk/release/app-release.apk
+          # 如果你想自定义 Release 标题和正文，可以添加：
+          # name: "Release ${{ github.ref_name }}"
+          # body: "自动构建的 Release 版本"
+          # draft: false
+          # prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
