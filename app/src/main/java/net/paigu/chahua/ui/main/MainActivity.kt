@@ -107,9 +107,9 @@ class MainActivity : FragmentActivity() {
         )
 
         requestNotificationPermissionIfNeeded()
-        AppGraph.startMessaging(this)
         maybeShowBatteryOptimizationPrompt()
         maybeCheckForUpdates()
+        AppGraph.startMessaging(this)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

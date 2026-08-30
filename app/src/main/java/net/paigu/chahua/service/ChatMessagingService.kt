@@ -31,11 +31,6 @@ class ChatMessagingService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     companion object {
-        const val ACTION_SHOW_PERSISTENT_NOTIFICATION =
-            "net.paigu.chahua.action.SHOW_PERSISTENT_NOTIFICATION"
-        const val ACTION_HIDE_PERSISTENT_NOTIFICATION =
-            "net.paigu.chahua.action.HIDE_PERSISTENT_NOTIFICATION"
-
         private const val CHANNEL_FOREGROUND = "chat_messaging"
         private const val CHANNEL_CHATS = "chat_messages"
         private const val CHANNEL_THREADS = "thread_messages"
@@ -48,7 +43,7 @@ class ChatMessagingService : Service() {
         super.onCreate()
         createNotificationChannels()
         AppGraph.engine.start()
-        startForegroundCompat(getString(R.string.service_running))
+        // 先满足前台服务启动要求，再按开关决定是否移除常驻通知。
         applyPersistentNotificationPreference()
         scope.launch {
             AppGraph.store.incoming.collect { msg ->
@@ -60,13 +55,9 @@ class ChatMessagingService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_SHOW_PERSISTENT_NOTIFICATION -> startForegroundCompat(
-                getString(R.string.service_running),
-            )
-            ACTION_HIDE_PERSISTENT_NOTIFICATION -> hideForegroundNotification()
-            else -> applyPersistentNotificationPreference()
-        }
+        // 任何经 startForegroundService 到达的命令都必须先调用 startForeground，
+        // 否则超时会被系统判为 ForegroundServiceDidNotStartInTimeException 并杀进程。
+        applyPersistentNotificationPreference()
         return START_STICKY
     }
 
@@ -109,11 +100,10 @@ class ChatMessagingService : Service() {
         )
     }
 
-    /** 按“常驻通知”开关决定通知栏常驻通知的显示/隐藏。 */
+    /** 先启动前台（满足系统要求），再按“常驻通知”开关决定是否隐藏常驻通知。 */
     private fun applyPersistentNotificationPreference() {
-        if (AppGraph.settings.snapshot().persistentNotificationEnabled) {
-            startForegroundCompat(getString(R.string.service_running))
-        } else {
+        startForegroundCompat(getString(R.string.service_running))
+        if (!AppGraph.settings.snapshot().persistentNotificationEnabled) {
             hideForegroundNotification()
         }
     }

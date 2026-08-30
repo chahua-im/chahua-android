@@ -91,14 +91,8 @@ object AppGraph {
 
     /** 只切换“常驻通知”的显示/隐藏，不停止后台服务。 */
     fun setPersistentNotification(context: Context, enabled: Boolean) {
-        val intent = Intent(context, ChatMessagingService::class.java).apply {
-            action = if (enabled) {
-                ChatMessagingService.ACTION_SHOW_PERSISTENT_NOTIFICATION
-            } else {
-                ChatMessagingService.ACTION_HIDE_PERSISTENT_NOTIFICATION
-            }
-        }
-        runCatching { ContextCompat.startForegroundService(context, intent) }
+        // 服务会按当前“常驻通知”设置自动显示/隐藏，这里只需保证服务在运行。
+        startMessaging(context)
     }
 
     private fun buildImageLoader(context: Context, session: SessionManager): ImageLoader {
