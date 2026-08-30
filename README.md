@@ -1,5 +1,7 @@
 # Chahua-Android
 
+简体中文 | [English](README.en.md)
+
 ![Min SDK](https://img.shields.io/badge/minSdk-24-brightgreen)
 ![Target SDK](https://img.shields.io/badge/targetSdk-36-brightgreen)
 
