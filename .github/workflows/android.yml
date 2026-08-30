@@ -1,0 +1,108 @@
+name: Build and Sign Release APK
+
+# 触发工作流的事件
+on:
+  # 1. 当你推送一个以 'v' 开头的标签时触发，例如 v1.0.0
+  push:
+    tags:
+      - 'v*'
+  # 2. 允许你从 GitHub 页面手动触发（但手动触发不会自动创建 Release）
+  workflow_dispatch:
+
+# ===== 添加以下权限配置 =====
+# 赋予该工作流写入仓库内容的权限，以允许创建 Release
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 检出代码
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. 设置 Java 环境 (Android 构建通常需要 Java 11 或 17)
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # 3. 设置 Gradle 缓存以加速后续构建
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # 4. 从 Secret 解码并还原 Keystore 文件
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.jks
+
+      # 5. 修复 gradlew 执行权限（避免 Permission denied）
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      # 6. 执行 Release 构建 (会生成未签名的 APK)
+      - name: Build Release APK
+        run: ./gradlew assembleRelease
+
+      # 7. 使用 zipalign 对齐未签名 APK
+      #    注意：apksigner 要求先对齐、后签名（与 jarsigner 的顺序相反）。
+      #    BUILD_TOOLS 自动选取已安装的最高版本 build-tools。
+      - name: Align APK
+        run: |
+          BUILD_TOOLS=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign" -f -p 4 \
+            app/build/outputs/apk/release/app-release-unsigned.apk \
+            app/build/outputs/apk/release/app-release-aligned.apk
+
+      # 8. 使用 apksigner 对 APK 进行签名（v2/v3 签名，兼容 Android 11+）
+      - name: Sign APK
+        run: |
+          BUILD_TOOLS=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner" sign \
+            --ks release.jks \
+            --ks-pass "pass:${{ secrets.KEYSTORE_PASSWORD }}" \
+            --key-pass "pass:${{ secrets.KEY_PASSWORD }}" \
+            --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
+            --out app/build/outputs/apk/release/app-release.apk \
+            app/build/outputs/apk/release/app-release-aligned.apk
+
+      # 9. 验证最终 APK 的签名
+      - name: Verify APK signature
+        run: |
+          BUILD_TOOLS=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner" verify --verbose \
+            app/build/outputs/apk/release/app-release.apk
+
+      # 10. 重命名 APK，文件名带上版本号（取自标签名，如 app-release-v1.2.1.apk）
+      - name: Rename APK with version
+        run: |
+          VERSION="${{ github.ref_name }}"
+          mv app/build/outputs/apk/release/app-release.apk \
+             "app/build/outputs/apk/release/app-release-${VERSION}.apk"
+          echo "APK_NAME=app-release-${VERSION}.apk" >> "$GITHUB_ENV"
+
+      # 11. 将最终的 APK 上传为工作流产物 (Artifact)，方便手动下载
+      - name: Upload APK as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-apk
+          path: app/build/outputs/apk/release/${{ env.APK_NAME }}
+
+      # 12. (可选) 自动创建 GitHub Release 并上传 APK
+      #     仅当推送标签 (v*) 时触发，手动触发时跳过
+      - name: Create Release and Upload APK
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: app/build/outputs/apk/release/${{ env.APK_NAME }}
+          # 可选的 Release 标题和正文（取消注释即可使用）
+          # name: "Release ${{ github.ref_name }}"
+          # body: "自动构建的 Release 版本"
+          # draft: false
+          # prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
