@@ -22,7 +22,7 @@
 
 前往 [GitHub Releases](https://github.com/chahua-im/chahua-android/releases) 下载最新版 APK。
 
-应用内「设置 → 关于 → 检查更新」会通过 GitHub Releases 自动检测新版本。
+应用内「设置 → 通用 → 检查更新」会通过 GitHub Releases 自动检测新版本。
 
 ## 服务器配置
 
@@ -77,4 +77,4 @@ app/src/main/java/net/paigu/chahua/
 ## 许可
 
 <!-- TODO: 确定开源协议后在此补充，例如 MIT / GPL-3.0 -->
-暂未添加 LICENSE，待补充。
+GNU General Public License v3.0
