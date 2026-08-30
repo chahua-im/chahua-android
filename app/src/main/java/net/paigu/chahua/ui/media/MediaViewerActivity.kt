@@ -272,17 +272,19 @@ private fun MediaViewerScreen(
                     saving = saving,
                 )
             } else {
-                ZoomableImage(url = item.url, onTap = onBack)
-                OverlayIconButton(
-                    icon = Icons.Filled.Download,
-                    contentDescription = stringResource(R.string.media_save),
-                    onClick = ::requestSave,
-                    showProgress = saving,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .statusBarsPadding()
-                        .padding(8.dp),
-                )
+                Box(modifier = Modifier.fillMaxSize()) {
+                    ZoomableImage(url = item.url, onTap = onBack)
+                    OverlayIconButton(
+                        icon = Icons.Filled.Download,
+                        contentDescription = stringResource(R.string.media_save),
+                        onClick = ::requestSave,
+                        showProgress = saving,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .statusBarsPadding()
+                            .padding(8.dp),
+                    )
+                }
             }
         }
         if (items.size > 1) {
