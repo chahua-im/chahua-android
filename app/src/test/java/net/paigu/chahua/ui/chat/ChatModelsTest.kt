@@ -1,12 +1,16 @@
 package net.paigu.chahua.ui.chat
 
 import net.paigu.chahua.data.models.MessageDto
+import net.paigu.chahua.data.models.StickerPackDetailResponse
 import net.paigu.chahua.data.models.StickerPackOrderItemDto
 import net.paigu.chahua.data.models.StickerPackSummaryDto
 import net.paigu.chahua.data.models.StickerMediaDto
 import net.paigu.chahua.data.models.StickerPackPreviewStickerDto
+import net.paigu.chahua.data.models.StickerSummaryDto
 import net.paigu.chahua.data.models.UserDto
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChatModelsTest {
@@ -91,5 +95,88 @@ class ChatModelsTest {
         val sorted = sortPacksByOrder(packs, order)
 
         assertEquals(listOf("new", "old", "unknown"), sorted.map { it.id })
+    }
+
+    private fun sticker(id: String, favorited: Boolean = false): StickerSummaryDto =
+        StickerSummaryDto(
+            id = id,
+            media = StickerMediaDto(id = "media-$id", url = "https://example.com/$id.png"),
+            emoji = "😀",
+            isFavorited = favorited,
+        )
+
+    @Test
+    fun applyStickerFavoriteToPanelAddsToFavoritesAndSyncsPackDetails() {
+        val panel = StickerPanelUiState(
+            details = mapOf(
+                "p1" to StickerPackDetailResponse(
+                    id = "p1",
+                    stickers = listOf(sticker("s1"), sticker("s2")),
+                ),
+            ),
+        )
+
+        val updated = applyStickerFavoriteToPanel(
+            panel = panel,
+            stickerId = "s1",
+            sticker = sticker("s1").copy(isFavorited = true),
+            favorite = true,
+        )
+
+        assertEquals(listOf("s1"), updated.favorites.map { it.id })
+        assertTrue(updated.favorites.single().isFavorited)
+        assertTrue(updated.details.getValue("p1").stickers.first().isFavorited)
+        assertFalse(updated.details.getValue("p1").stickers.last().isFavorited)
+    }
+
+    @Test
+    fun applyStickerFavoriteToPanelRemovesFromFavoritesAndSyncsPackDetails() {
+        val panel = StickerPanelUiState(
+            favorites = listOf(sticker("s1", favorited = true)),
+            details = mapOf(
+                "p1" to StickerPackDetailResponse(
+                    id = "p1",
+                    stickers = listOf(sticker("s1", favorited = true)),
+                ),
+            ),
+        )
+
+        val updated = applyStickerFavoriteToPanel(
+            panel = panel,
+            stickerId = "s1",
+            sticker = null,
+            favorite = false,
+        )
+
+        assertTrue(updated.favorites.isEmpty())
+        assertFalse(updated.details.getValue("p1").stickers.single().isFavorited)
+    }
+
+    @Test
+    fun applyStickerFavoriteToPanelDoesNotDuplicateExistingFavorite() {
+        val panel = StickerPanelUiState(favorites = listOf(sticker("s1", favorited = true)))
+
+        val updated = applyStickerFavoriteToPanel(
+            panel = panel,
+            stickerId = "s1",
+            sticker = sticker("s1", favorited = true),
+            favorite = true,
+        )
+
+        assertEquals(1, updated.favorites.size)
+    }
+
+    @Test
+    fun applyStickerFavoriteToPanelKeepsFavoritesUnchangedWithoutSummary() {
+        val panel = StickerPanelUiState()
+
+        val updated = applyStickerFavoriteToPanel(
+            panel = panel,
+            stickerId = "s1",
+            sticker = null,
+            favorite = true,
+        )
+
+        assertTrue(updated.favorites.isEmpty())
     }
 }

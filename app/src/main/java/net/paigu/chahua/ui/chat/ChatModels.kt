@@ -65,6 +65,39 @@ data class StickerPanelUiState(
     val error: String? = null,
 )
 
+/**
+ * 收藏 / 取消收藏一张贴纸后，同步更新表情面板状态：
+ * - 收藏时向“收藏”列表补充贴纸（已在列表中则不重复）；
+ * - 取消收藏时从“收藏”列表移除；
+ * - 各已加载表情包详情中的同款贴纸同步刷新收藏标记。
+ */
+internal fun applyStickerFavoriteToPanel(
+    panel: StickerPanelUiState,
+    stickerId: String,
+    sticker: StickerSummaryDto?,
+    favorite: Boolean,
+): StickerPanelUiState {
+    val favorites = if (favorite) {
+        if (panel.favorites.any { it.id == stickerId }) {
+            panel.favorites
+        } else {
+            panel.favorites + listOfNotNull(sticker)
+        }
+    } else {
+        panel.favorites.filterNot { it.id == stickerId }
+    }
+    return panel.copy(
+        favorites = favorites,
+        details = panel.details.mapValues { (_, detail) ->
+            detail.copy(
+                stickers = detail.stickers.map {
+                    if (it.id == stickerId) it.copy(isFavorited = favorite) else it
+                },
+            )
+        },
+    )
+}
+
 /** 聊天内贴纸预览弹窗状态。 */
 data class StickerPreviewUiState(
     val stickerId: String? = null,

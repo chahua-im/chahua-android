@@ -65,7 +65,7 @@ class ChatApi(
 
     // ---- 登录 ----
 
-    /** 通过 shireyishunjian 账号密码接口换取 JWT（接口返回纯文本 JWT）。 */
+    /** 通过 湿热api 账号密码换取 JWT（接口返回纯文本 JWT）。 */
     suspend fun loginWithCredentials(username: String, password: String): String =
         client.loginWithCredentials(username, password)
 

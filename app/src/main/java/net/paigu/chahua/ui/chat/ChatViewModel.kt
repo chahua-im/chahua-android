@@ -177,6 +177,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         favorite: Boolean,
         onDone: (String) -> Unit,
         onError: (String) -> Unit,
+        sticker: StickerSummaryDto? = null,
     ) {
         viewModelScope.launch {
             val result = if (favorite) {
@@ -187,16 +188,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             result
                 .onSuccess {
                     store.applyStickerFavorite(stickerId, favorite)
-                    val panel = _stickerPanel.value
-                    _stickerPanel.value = if (favorite) {
-                        panel.copy(
-                            favorites = panel.favorites + listOfNotNull(findStickerSummary(stickerId)),
-                        )
+                    val favoriteSummary = if (favorite) {
+                        sticker?.copy(isFavorited = true) ?: findStickerSummary(stickerId)
                     } else {
-                        panel.copy(
-                            favorites = panel.favorites.filterNot { it.id == stickerId },
-                        )
+                        null
                     }
+                    _stickerPanel.value = applyStickerFavoriteToPanel(
+                        panel = _stickerPanel.value,
+                        stickerId = stickerId,
+                        sticker = favoriteSummary,
+                        favorite = favorite,
+                    )
                     onDone(
                         getString(
                             if (favorite) {
@@ -257,24 +259,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
                 .onSuccess {
                     store.applyStickerFavorite(detail.id, favorite)
-                    val panel = _stickerPanel.value
-                    _stickerPanel.value = if (favorite) {
-                        panel.copy(
-                            favorites = panel.favorites + StickerSummaryDto(
-                                id = detail.id,
-                                media = detail.media,
-                                emoji = detail.emoji,
-                                name = detail.name,
-                                description = detail.description,
-                                createdAt = detail.createdAt,
-                                isFavorited = true,
-                            ),
-                        )
-                    } else {
-                        panel.copy(
-                            favorites = panel.favorites.filterNot { it.id == detail.id },
-                        )
-                    }
+                    val favoriteSummary = StickerSummaryDto(
+                        id = detail.id,
+                        media = detail.media,
+                        emoji = detail.emoji,
+                        name = detail.name,
+                        description = detail.description,
+                        createdAt = detail.createdAt,
+                        isFavorited = favorite,
+                    )
+                    _stickerPanel.value = applyStickerFavoriteToPanel(
+                        panel = _stickerPanel.value,
+                        stickerId = detail.id,
+                        sticker = favoriteSummary,
+                        favorite = favorite,
+                    )
                     _stickerPreview.value = _stickerPreview.value.copy(busyFavorite = false)
                 }
                 .onFailure {

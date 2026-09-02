@@ -1,7 +1,6 @@
 package net.paigu.chahua.ui.main
 
 import android.Manifest
-import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -17,6 +16,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.fragment.app.FragmentActivity
@@ -39,6 +39,12 @@ class MainActivity : FragmentActivity() {
 
     internal var selectedTab by mutableIntStateOf(0)
         private set
+
+    /** 开屏阶段当前展示的 Compose 弹窗。 */
+    private var startupDialog by mutableStateOf<StartupDialog?>(null)
+
+    /** 当前有弹窗展示时，暂存后续待展示的开屏弹窗。 */
+    private var queuedStartupDialog: StartupDialog? = null
 
     private var updatePromptChecked = false
 
@@ -81,6 +87,27 @@ class MainActivity : FragmentActivity() {
                 MainBottomBar(
                     selectedTab = selectedTab,
                     onSelectTab = { selectTab(it) },
+                )
+            }
+        }
+
+        findViewById<ComposeView>(R.id.startup_dialog_host).setContent {
+            ChahuaTheme {
+                StartupDialogHost(
+                    dialog = startupDialog,
+                    onDismiss = ::dismissStartupDialog,
+                    onDownload = ::openUpdateDownload,
+                    onOpenBatterySettings = {
+                        dismissStartupDialog()
+                        BatteryOptimization.openSettings(this@MainActivity)
+                    },
+                    onNeverAskBatteryAgain = {
+                        dismissStartupDialog()
+                        // 永不提示：记住选择，之后启动不再弹窗。
+                        AppGraph.scope.launch {
+                            AppGraph.settings.setBatteryOptimizationPromptDismissed(true)
+                        }
+                    },
                 )
             }
         }
@@ -159,21 +186,7 @@ class MainActivity : FragmentActivity() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
         if (BatteryOptimization.isIgnoringBatteryOptimizations(this)) return
         if (AppGraph.settings.snapshot().batteryOptimizationPromptDismissed) return
-        AlertDialog.Builder(this)
-            .setTitle(R.string.battery_optimization_dialog_title)
-            .setMessage(R.string.battery_optimization_dialog_message)
-            .setPositiveButton(R.string.battery_optimization_dialog_never) { _, _ ->
-                // 永不提示：记住选择，之后启动不再弹窗。
-                AppGraph.scope.launch {
-                    AppGraph.settings.setBatteryOptimizationPromptDismissed(true)
-                }
-            }
-            .setNegativeButton(R.string.battery_optimization_dialog_cancel, null)
-            .setNeutralButton(R.string.battery_optimization_dialog_continue) { _, _ ->
-                // 继续：跳转系统设置页，由用户手动关闭电池优化。
-                BatteryOptimization.openSettings(this)
-            }
-            .show()
+        showStartupDialog(StartupDialog.Battery)
     }
 
     /** 启动时静默检查 GitHub 最新版本，发现新版本时弹窗提示（本次进程只检查一次）。 */
@@ -185,23 +198,33 @@ class MainActivity : FragmentActivity() {
             if (!result.available) return@launch
             withContext(Dispatchers.Main) {
                 if (isFinishing || isDestroyed) return@withContext
-                AlertDialog.Builder(this@MainActivity)
-                    .setTitle(getString(R.string.update_available_title, result.latestVersion))
-                    .setMessage(result.releaseNotes.ifBlank {
-                        getString(R.string.update_release_notes_empty)
-                    })
-                    .setPositiveButton(R.string.update_download) { _, _ ->
-                        if (result.downloadUrl.isNotBlank()) {
-                            runCatching {
-                                startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(result.downloadUrl))
-                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                                )
-                            }
-                        }
-                    }
-                    .setNegativeButton(R.string.update_later, null)
-                    .show()
+                showStartupDialog(StartupDialog.Update(result))
+            }
+        }
+    }
+
+    /** 空闲时直接展示；已有弹窗打开时暂存，等当前弹窗关闭后再展示。 */
+    private fun showStartupDialog(dialog: StartupDialog) {
+        if (startupDialog == null) {
+            startupDialog = dialog
+        } else {
+            queuedStartupDialog = dialog
+        }
+    }
+
+    private fun dismissStartupDialog() {
+        startupDialog = queuedStartupDialog.also { queuedStartupDialog = null }
+    }
+
+    /** 点击“下载”后打开下载地址，并关闭更新弹窗。 */
+    private fun openUpdateDownload(downloadUrl: String) {
+        dismissStartupDialog()
+        if (downloadUrl.isNotBlank()) {
+            runCatching {
+                startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
             }
         }
     }

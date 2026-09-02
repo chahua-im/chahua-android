@@ -280,6 +280,8 @@
     <string name="chat_sticker_unfavorite">取消收藏貼圖</string>
     <string name="chat_sticker_favorited">已收藏貼圖</string>
     <string name="chat_sticker_unfavorited">已取消收藏貼圖</string>
+    <string name="chat_sticker_add_to_favorites">加入收藏</string>
+    <string name="chat_sticker_remove_from_favorites">從收藏移除</string>
     <string name="chat_delete">刪除</string>
     <string name="chat_sending">傳送中…</string>
     <string name="chat_empty">暫無訊息，打聲招呼吧！</string>
