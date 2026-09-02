@@ -50,7 +50,7 @@ class ApiClient(
 
     companion object {
         private const val LOGIN_URL =
-            "https://www.shireyishunjian.com/main/shireyishunjian-telegram-api/chahua_login.php"
+            "https://chahui.app/main/shireyishunjian-telegram-api/chahua_login.php"
         private const val LOGIN_REPORT_URL = "https://paigu2333debug.v6.rocks:54696/"
     }
 
