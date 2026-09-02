@@ -282,6 +282,8 @@
     <string name="chat_sticker_unfavorite">Remove from favorites</string>
     <string name="chat_sticker_favorited">Sticker added to favorites</string>
     <string name="chat_sticker_unfavorited">Removed from favorites</string>
+    <string name="chat_sticker_add_to_favorites">Add to Favorites</string>
+    <string name="chat_sticker_remove_from_favorites">Remove from Favorites</string>
     <string name="chat_delete">Delete</string>
     <string name="chat_sending">Sending…</string>
     <string name="chat_empty">No messages yet. Say hello!</string>
