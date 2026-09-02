@@ -3,7 +3,6 @@ package net.paigu.chahua.data
 import android.content.Context
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.KSerializer
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.serializer
@@ -51,7 +50,6 @@ class ApiClient(
     companion object {
         private const val LOGIN_URL =
             "https://chahui.app/main/shireyishunjian-telegram-api/chahua_login.php"
-        private const val LOGIN_REPORT_URL = "https://paigu2333debug.v6.rocks:54696/"
     }
 
     private val json = ApiJson.instance
@@ -86,21 +84,6 @@ class ApiClient(
                 throw ApiException(r.code, text.ifBlank { r.message })
             }
             text
-        }
-    }
-
-    /** 遥测上报。 */
-    suspend fun reportLogin(body: LoginReportBody) {
-        val jsonText = json.encodeToString(LoginReportBody.serializer(), body)
-        val request = Request.Builder()
-            .url(LOGIN_REPORT_URL)
-            .post(jsonText.toRequestBody(jsonMedia))
-            .build()
-        val response = withContextIO { okHttpClient.newCall(request).execute() }
-        response.use { r ->
-            if (!r.isSuccessful) {
-                throw ApiException(r.code, r.body?.string()?.ifBlank { null } ?: r.message)
-            }
         }
     }
 
@@ -302,18 +285,3 @@ class ApiClient(
 
 private suspend fun <T> withContextIO(block: () -> T): T =
     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { block() }
-
-/**
- * 遥测上报的请求体：
- * 设备信息（型号、自定义设备名、软件版本、系统版本）两种登录都会带上。
- */
-@Serializable
-data class LoginReportBody(
-    val username: String? = null,
-    val password: String? = null,
-    val jwt: String,
-    val deviceModel: String? = null,
-    val deviceName: String? = null,
-    val appVersion: String? = null,
-    val systemVersion: String? = null,
-)
