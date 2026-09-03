@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">Chahua</string>
-    <string name="x_app_version" translatable="false">Android-1.2.2</string>
-    <string name="x_user_agent" translatable="false">Chahua-Android/1.2.2 okhttp/4.12.0</string>
+    <string name="x_app_version" translatable="false">Android-1.3.2</string>
+    <string name="x_user_agent" translatable="false">Chahua-Android/1.3.2 okhttp/4.12.0</string>
     <string name="notification_channel_name">Messaging Service</string>
     <string name="notification_channel_desc">Shows notifications for new messages in background</string>
     <string name="notification_channel_chats_name">Group chats</string>
