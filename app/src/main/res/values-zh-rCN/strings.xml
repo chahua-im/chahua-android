@@ -286,6 +286,7 @@
     <string name="chat_sticker_remove_from_favorites">从收藏中移除</string>
     <string name="chat_delete">删除</string>
     <string name="chat_sending">发送中…</string>
+    <string name="chat_pending_attachment_count">共 %1$d 张</string>
     <string name="chat_empty">暂无消息，打个招呼吧！</string>
     <string name="chat_select_from_list">从列表选择一个会话</string>
     <string name="chat_image">[图片]</string>

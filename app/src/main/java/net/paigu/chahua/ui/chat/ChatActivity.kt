@@ -34,6 +34,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
@@ -203,6 +204,9 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+/** 一次可选择的照片/视频数量上限。 */
+private const val MAX_PICKED_ATTACHMENTS = 10
+
 class ChatActivity : ComponentActivity() {
 
     private val viewModel: ChatViewModel by viewModels()
@@ -366,10 +370,11 @@ internal fun ChatScreen(
     var emojiPickerMessage by remember { mutableStateOf<MessageDto?>(null) }
     var stickerPreviewId by remember { mutableStateOf<String?>(null) }
     var showPinList by remember { mutableStateOf(false) }
-    var draft by remember { mutableStateOf<DraftAttachment?>(null) }
+    var drafts by remember { mutableStateOf<List<DraftAttachment>>(emptyList()) }
     var showAttachMenu by remember { mutableStateOf(false) }
     var showEmojiPanel by remember { mutableStateOf(false) }
     var pendingVideoUri by remember { mutableStateOf<Uri?>(null) }
+    var videoPickQueue by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var showVideoDialog by remember { mutableStateOf(false) }
     var compressingVideo by remember { mutableStateOf(false) }
     var cameraPhotoUri by remember { mutableStateOf<Uri?>(null) }
@@ -507,9 +512,9 @@ internal fun ChatScreen(
 
     fun sendCurrentMessage() {
         val text = input.text.trim()
-        val attachment = draft
+        val attachments = drafts
         val editing = editingMessage
-        if (text.isEmpty() && attachment == null && editing == null) return
+        if (text.isEmpty() && attachments.isEmpty() && editing == null) return
         if (editing != null) {
             if (text.isNotBlank()) {
                 viewModel.editMessage(
@@ -520,18 +525,34 @@ internal fun ChatScreen(
             }
             editingMessage = null
             input = TextFieldValue("")
-            draft = null
+            drafts = emptyList()
             showEmojiPanel = false
             return
         }
-        viewModel.sendDraft(text, attachment)
+        if (attachments.isEmpty()) {
+            viewModel.sendDraft(text, null)
+        } else {
+            // 多张图片合并为一条消息发送；视频/文件仍各自发送。
+            val images = attachments.filter { it.kind == "image" }
+            val others = attachments.filter { it.kind != "image" }
+            if (images.isNotEmpty()) {
+                viewModel.sendImagesBatch(text, images)
+            }
+            others.forEachIndexed { index, attachment ->
+                viewModel.sendDraft(
+                    if (images.isEmpty() && index == 0) text else "",
+                    attachment,
+                )
+            }
+        }
         input = TextFieldValue("")
-        draft = null
+        drafts = emptyList()
         editingMessage = null
         showEmojiPanel = false
     }
 
-    fun addDraft(uri: Uri, kind: String) {
+    fun addDraft(uri: Uri, kind: String, compressVideo: Boolean = false) {
+        if (drafts.size >= MAX_PICKED_ATTACHMENTS) return
         val resolver = context.contentResolver
         val mime = resolver.getType(uri) ?: when (kind) {
             "image" -> "image/jpeg"
@@ -540,13 +561,27 @@ internal fun ChatScreen(
         }
         val name = queryDisplayName(context, uri)
             ?: "file_${System.currentTimeMillis()}"
-        draft = DraftAttachment(
+        drafts = drafts + DraftAttachment(
             uriString = uri.toString(),
             mimeType = mime,
             fileName = name,
             kind = kind,
+            compressVideo = compressVideo,
         )
         showEmojiPanel = false
+    }
+
+    /** 依次弹出待处理视频的压缩确认框。 */
+    fun promptNextVideo() {
+        val next = videoPickQueue.firstOrNull()
+        if (next != null) {
+            videoPickQueue = videoPickQueue.drop(1)
+            pendingVideoUri = next
+            showVideoDialog = true
+        } else {
+            pendingVideoUri = null
+            showVideoDialog = false
+        }
     }
 
     val nearBottom by remember {
@@ -596,17 +631,21 @@ internal fun ChatScreen(
         }
     }
 
-    val pickImage = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia(),
-    ) { uri ->
-        if (uri != null) addDraft(uri, "image")
+    val pickImages = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(
+            maxItems = MAX_PICKED_ATTACHMENTS,
+        ),
+    ) { uris ->
+        uris.forEach { addDraft(it, "image") }
     }
-    val pickVideo = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia(),
-    ) { uri ->
-        if (uri != null) {
-            pendingVideoUri = uri
-            showVideoDialog = true
+    val pickVideos = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(
+            maxItems = MAX_PICKED_ATTACHMENTS,
+        ),
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            videoPickQueue = uris
+            promptNextVideo()
         }
     }
     val openDocument = rememberLauncherForActivityResult(
@@ -623,8 +662,8 @@ internal fun ChatScreen(
         ActivityResultContracts.CaptureVideo(),
     ) { ok ->
         if (ok) cameraVideoUri?.let {
-            pendingVideoUri = it
-            showVideoDialog = true
+            videoPickQueue = listOf(it)
+            promptNextVideo()
         }
     }
 
@@ -780,11 +819,25 @@ internal fun ChatScreen(
                     replyTarget = uiState.replyTarget,
                     onDismiss = { viewModel.setReplyTarget(null) },
                 )
-                draft?.let { current ->
-                    DraftAttachmentPreview(
-                        draft = current,
-                        onRemove = { draft = null },
-                    )
+                if (drafts.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 180.dp)
+                            .verticalScroll(rememberScrollState()),
+                    ) {
+                        drafts.forEachIndexed { index, current ->
+                            DraftAttachmentPreview(
+                                draft = current,
+                                onRemove = {
+                                    drafts = drafts.filterIndexed { i, _ -> i != index }
+                                },
+                            )
+                            if (index != drafts.lastIndex) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                            }
+                        }
+                    }
                 }
                 if (compressingVideo) {
                     Text(
@@ -902,7 +955,8 @@ internal fun ChatScreen(
                         }
                         IconButton(
                             onClick = { sendCurrentMessage() },
-                            enabled = (input.text.isNotBlank() || draft != null) && !compressingVideo,
+                            enabled = (input.text.isNotBlank() || drafts.isNotEmpty()) &&
+                                !compressingVideo,
                             modifier = Modifier.size(56.dp),
                         ) {
                             Icon(
@@ -1071,7 +1125,7 @@ internal fun ChatScreen(
                                         text = item.message.message.orEmpty(),
                                         selection = TextRange(item.message.message?.length ?: 0),
                                     )
-                                    draft = null
+                                    drafts = emptyList()
                                     showEmojiPanel = false
                                 },
                                 quickReactionEmojis = quickReactions,
@@ -1189,13 +1243,13 @@ internal fun ChatScreen(
             onDismiss = { showAttachMenu = false },
             onPickPhoto = {
                 showAttachMenu = false
-                pickImage.launch(
+                pickImages.launch(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                 )
             },
             onPickVideo = {
                 showAttachMenu = false
-                pickVideo.launch(
+                pickVideos.launch(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly),
                 )
             },
@@ -1222,6 +1276,7 @@ internal fun ChatScreen(
             onDismissRequest = {
                 showVideoDialog = false
                 pendingVideoUri = null
+                promptNextVideo()
             },
             title = { Text(stringResource(R.string.chat_video_compress_title)) },
             text = { Text(stringResource(R.string.chat_video_compress_question)) },
@@ -1235,13 +1290,13 @@ internal fun ChatScreen(
                             uriString = videoUri.toString(),
                             onReady = { outputUri ->
                                 compressingVideo = false
-                                draft = DraftAttachment(
-                                    uriString = outputUri,
-                                    mimeType = "video/mp4",
-                                    fileName = "compressed_${System.currentTimeMillis()}.mp4",
+                                addDraft(
+                                    uri = Uri.parse(outputUri),
                                     kind = "video",
                                     compressVideo = true,
                                 )
+                                pendingVideoUri = null
+                                promptNextVideo()
                             },
                             onError = { message ->
                                 compressingVideo = false
@@ -1253,6 +1308,8 @@ internal fun ChatScreen(
                                     ),
                                     Toast.LENGTH_SHORT,
                                 ).show()
+                                pendingVideoUri = null
+                                promptNextVideo()
                             },
                         )
                     },
@@ -1264,8 +1321,9 @@ internal fun ChatScreen(
                 TextButton(
                     onClick = {
                         showVideoDialog = false
-                        pendingVideoUri = null
                         addDraft(videoUri, "video")
+                        pendingVideoUri = null
+                        promptNextVideo()
                     },
                 ) {
                     Text(stringResource(R.string.chat_video_no_compress))

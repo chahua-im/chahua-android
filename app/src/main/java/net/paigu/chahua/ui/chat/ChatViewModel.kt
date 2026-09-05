@@ -627,6 +627,86 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** 多张图片合并为一条消息发送：逐张上传，最后用全部附件 ID 发送一次。 */
+    fun sendImagesBatch(text: String, images: List<DraftAttachment>) {
+        if (images.isEmpty()) return
+        val chatId = _chatId.value ?: return
+        val reply = _uiState.value.replyTarget
+        val threadId = _threadId.value
+        viewModelScope.launch {
+            var pending: PendingMessage? = null
+            try {
+                val context = getApplication<Application>()
+                val resolver = context.contentResolver
+                val first = images.first()
+                val created = PendingMessage(
+                    clientGeneratedId = "android-${UUID.randomUUID()}",
+                    text = text.ifBlank { null },
+                    attachmentLocalUri = first.uriString,
+                    createdAt = Instant.now().toString(),
+                    replyToId = reply?.id,
+                    attachmentKind = "image",
+                    attachmentCount = images.size,
+                )
+                pending = created
+                _pending.update { it + created }
+                _uiState.value = _uiState.value.copy(replyTarget = null)
+
+                val uploadedIds = mutableListOf<String>()
+                images.forEach { attachment ->
+                    val uri = Uri.parse(attachment.uriString)
+                    val mime = attachment.mimeType.ifBlank {
+                        resolver.getType(uri) ?: "image/jpeg"
+                    }
+                    val name = attachment.fileName.ifBlank {
+                        queryDisplayName(uri) ?: "file_${System.currentTimeMillis()}"
+                    }
+                    val imageBytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: throw IllegalStateException(getString(R.string.chat_read_file_failed))
+                    if (imageBytes.size > 20 * 1024 * 1024) {
+                        removePending(created.clientGeneratedId)
+                        _uiState.value = _uiState.value.copy(
+                            error = getString(R.string.chat_image_too_large),
+                        )
+                        return@launch
+                    }
+                    val (width, height) = imageBounds(imageBytes)
+                    val upload = api.uploadUrl(
+                        UploadUrlRequest(
+                            filename = name,
+                            contentType = mime,
+                            size = imageBytes.size.toLong(),
+                            width = width,
+                            height = height,
+                        ),
+                    )
+                    api.uploadFile(upload.uploadUrl, upload.uploadHeaders, imageBytes, mime)
+                    uploadedIds += upload.attachmentId
+                }
+                engine.sendMessage(
+                    chatId = chatId,
+                    text = text.ifBlank { null },
+                    replyToId = reply?.id,
+                    replyRootId = threadId,
+                    attachmentIds = uploadedIds,
+                    clientGeneratedId = created.clientGeneratedId,
+                )
+                    .onSuccess { removePending(created.clientGeneratedId) }
+                    .onFailure {
+                        removePending(created.clientGeneratedId)
+                        _uiState.value = _uiState.value.copy(
+                            error = getString(R.string.chat_send_failed, it.message),
+                        )
+                    }
+            } catch (e: Exception) {
+                removePending(pending?.clientGeneratedId)
+                _uiState.value = _uiState.value.copy(
+                    error = getString(R.string.chat_send_failed, e.message),
+                )
+            }
+        }
+    }
+
     /** 直接发送贴纸消息，不改变输入框中的文字。 */
     fun sendSticker(sticker: StickerSummaryDto) {
         val chatId = _chatId.value ?: return

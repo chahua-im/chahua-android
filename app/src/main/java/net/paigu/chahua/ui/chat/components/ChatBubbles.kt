@@ -761,6 +761,20 @@ internal fun PendingBubble(
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                 }
+                if (
+                    pending.attachmentKind == "image" &&
+                    pending.attachmentCount > 1
+                ) {
+                    Text(
+                        text = stringResource(
+                            R.string.chat_pending_attachment_count,
+                            pending.attachmentCount,
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
                 pending.text?.let {
                     Text(
                         text = renderMentionsAsText(it, emptyList()),

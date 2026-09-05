@@ -288,6 +288,7 @@
     <string name="chat_sticker_remove_from_favorites">Remove from Favorites</string>
     <string name="chat_delete">Delete</string>
     <string name="chat_sending">Sending…</string>
+    <string name="chat_pending_attachment_count">%1$d items</string>
     <string name="chat_empty">No messages yet. Say hello!</string>
     <string name="chat_select_from_list">Select a chat from the list</string>
     <string name="chat_image">[Image]</string>
