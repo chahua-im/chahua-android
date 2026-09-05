@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -134,6 +135,11 @@ fun ChatListScreen(
     val chats by viewModel.chats.collectAsState()
     val threads by viewModel.threads.collectAsState()
     val groupChats = chats.filterNot { it.isDm }
+    val dmChatsForUnread = chats.filter { it.isDm }
+    val hasGroupUnread = groupChats.any { it.unreadCount > 0 }
+    val hasDmUnread = dmChatsForUnread.any { it.unreadCount > 0 }
+    val hasThreadUnread = threads.any { it.unreadCount > 0 }
+    val hasAnyUnread = hasGroupUnread || hasDmUnread || hasThreadUnread
     val archivedChats by viewModel.archivedChats.collectAsState()
     val archivedThreads by viewModel.archivedThreads.collectAsState()
     val loading by viewModel.loading.collectAsState()
@@ -225,10 +231,33 @@ fun ChatListScreen(
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             SecondaryTabRow(selectedTabIndex = safeIndex) {
                 tabs.forEachIndexed { index, item ->
+                    val showDot = when (item) {
+                        ChatTab.ALL -> hasAnyUnread
+                        ChatTab.GROUP -> hasGroupUnread
+                        ChatTab.THREADS -> hasThreadUnread
+                        ChatTab.FRIENDS -> hasDmUnread
+                    }
                     Tab(
                         selected = safeIndex == index,
                         onClick = { tabIndex = index },
-                        text = { Text(stringResource(item.titleRes)) },
+                        text = {
+                            Box {
+                                Text(
+                                    text = stringResource(item.titleRes),
+                                    modifier = Modifier.padding(horizontal = 2.dp),
+                                )
+                                if (showDot) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .size(8.dp)
+                                            .offset(x = 4.dp, y = (-4).dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.error),
+                                    )
+                                }
+                            }
+                        },
                     )
                 }
             }
