@@ -15,6 +15,12 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
@@ -268,7 +274,17 @@ private fun SettingsScreen(
         onBack = ::navigateBack,
     )
 
-    when (page) {
+    AnimatedContent(
+        targetState = page,
+        modifier = Modifier.fillMaxSize(),
+        transitionSpec = {
+            (fadeIn(tween(durationMillis = 220)) +
+                slideInHorizontally(tween(durationMillis = 220)) { it / 12 })
+                .togetherWith(fadeOut(tween(durationMillis = 120)))
+        },
+        label = "settingsPage",
+    ) { targetPage ->
+        when (targetPage) {
         SettingsPage.HOME -> HomeScreen(
             sessionState = sessionState,
             developerEnabled = settings.developerEnabled,
@@ -341,6 +357,7 @@ private fun SettingsScreen(
             settings = settings,
             onShowAllTabChange = viewModel::setShowAllTab,
             onHideThreadsInAllTabChange = viewModel::setHideThreadsInAllTab,
+            onSortAllByLatestChange = viewModel::setSortAllByLatest,
             onFontSizeChange = viewModel::setFontSize,
             onThemeColorChange = viewModel::setThemeColor,
             onThemeModeChange = viewModel::setThemeMode,
@@ -394,5 +411,6 @@ private fun SettingsScreen(
                 navigate(SettingsPage.HOME)
             },
         )
+        }
     }
 }

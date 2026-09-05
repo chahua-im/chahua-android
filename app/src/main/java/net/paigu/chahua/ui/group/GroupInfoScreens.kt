@@ -169,14 +169,24 @@ internal fun InfoContent(
             last >= info.totalItemsCount - 4 && info.totalItemsCount > 0
         }
     }
+    // “全部”由图片 + 视频两个分页流合并展示，到底时两个流都要继续加载。
+    val loadMoreTargets = when (attachmentFilter) {
+        AttachmentFilter.ALL -> listOf(AttachmentFilter.IMAGE, AttachmentFilter.VIDEO)
+        else -> listOf(attachmentFilter)
+    }
 
-    LaunchedEffect(shouldLoadMore, attachmentFilter) {
-        if (
-            shouldLoadMore &&
-            attachmentFilter != AttachmentFilter.ALL &&
-            state.attachmentCursors[attachmentFilter] != null
-        ) {
-            viewModel.loadMoreAttachments(attachmentFilter)
+    LaunchedEffect(
+        shouldLoadMore,
+        attachmentFilter,
+        state.attachmentCursors[AttachmentFilter.IMAGE],
+        state.attachmentCursors[AttachmentFilter.VIDEO],
+    ) {
+        if (shouldLoadMore) {
+            loadMoreTargets.forEach { target ->
+                if (state.attachmentCursors[target] != null) {
+                    viewModel.loadMoreAttachments(target)
+                }
+            }
         }
     }
 

@@ -103,6 +103,7 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun FriendsTabContent(
     viewModel: ChatListViewModel,
+    dmChats: List<ChatDto>,
     onOpenRequests: () -> Unit,
     onOpenFriend: (MemberSummaryDto) -> Unit,
 ) {
@@ -177,11 +178,12 @@ internal fun FriendsTabContent(
                 }
             }
             else -> {
-                item(key = "friends_header") {
-                    SectionHeader(text = stringResource(R.string.friends_section))
-                }
                 items(friends, key = { it.user.uid }) { friend ->
-                    FriendRow(friend = friend, onClick = { onOpenFriend(friend.user) })
+                    FriendChatRow(
+                        friend = friend,
+                        dmChat = dmChats.firstOrNull { it.peer?.uid == friend.user.uid },
+                        onClick = { onOpenFriend(friend.user) },
+                    )
                     HorizontalDivider()
                 }
             }
@@ -190,42 +192,30 @@ internal fun FriendsTabContent(
 }
 
 @Composable
-private fun FriendRow(
+private fun FriendChatRow(
     friend: FriendResponse,
+    dmChat: ChatDto?,
     onClick: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        UserAvatar(
-            url = friend.user.avatarUrl,
-            name = friend.user.username,
-            size = 48.dp,
-            showBackground = false,
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = friend.user.username?.takeIf { it.isNotBlank() }
-                    ?: stringResource(R.string.message_sender_unknown),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+    val name = friend.user.username?.takeIf { it.isNotBlank() }
+        ?: stringResource(R.string.message_sender_unknown)
+    val dm = dmChat
+    ConversationRow(
+        avatarUrl = friend.user.avatarUrl,
+        avatarName = name,
+        title = name,
+        preview = if (dm != null) {
+            messagePreviewWithSender(
+                dm.lastMessage,
+                stringResource(R.string.message_sender_unknown),
             )
-            friend.since?.let {
-                Text(
-                    text = formatListTime(it),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
+        } else {
+            stringResource(R.string.friends_no_messages)
+        },
+        timeText = dm?.let { formatListTime(it.lastMessageAt) }.orEmpty(),
+        unreadCount = dm?.unreadCount ?: 0L,
+        onClick = onClick,
+    )
 }
 
 /** 好友请求子页面：双向请求历史，收到的待处理请求可接受/拒绝。 */

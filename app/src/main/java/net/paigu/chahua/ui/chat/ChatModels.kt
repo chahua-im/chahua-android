@@ -25,6 +25,8 @@ data class PendingMessage(
     val createdAt: String,
     val replyToId: String?,
     val attachmentKind: String = "image",
+    /** 一条消息中合并发送的附件数量（本地预展示用）。 */
+    val attachmentCount: Int = 1,
     val sticker: StickerSummaryDto? = null,
 )
 

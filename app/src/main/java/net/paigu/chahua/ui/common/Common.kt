@@ -2,6 +2,8 @@ package net.paigu.chahua.ui.common
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -46,6 +48,7 @@ fun AuthAsyncImage(
 }
 
 /** 圆形头像：有 URL 加载图片，否则显示姓名首字符。 */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun UserAvatar(
     url: String?,
@@ -54,6 +57,7 @@ fun UserAvatar(
     size: Dp = 40.dp,
     showBackground: Boolean = true,
     onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
 ) {
     Box(
         modifier = modifier
@@ -67,8 +71,11 @@ fun UserAvatar(
                 },
             )
             .then(
-                if (onClick != null) {
-                    Modifier.clickable { onClick?.invoke() }
+                if (onClick != null || onLongClick != null) {
+                    Modifier.combinedClickable(
+                        onClick = { onClick?.invoke() },
+                        onLongClick = { onLongClick?.invoke() },
+                    )
                 } else {
                     Modifier
                 },
