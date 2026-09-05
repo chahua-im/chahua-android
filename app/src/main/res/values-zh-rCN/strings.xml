@@ -83,6 +83,8 @@
     <string name="settings_show_all_tab_desc">在聊天列表顶部的“群组、话题”前添加“全部”标签，合并显示群组和话题。</string>
     <string name="settings_hide_threads_in_all_tab">在“全部”中隐藏话题</string>
     <string name="settings_hide_threads_in_all_tab_desc">开启后，“全部”标签只显示会话，不显示话题。</string>
+    <string name="settings_sort_all_by_latest">使用新版消息排序</string>
+    <string name="settings_sort_all_by_latest_desc">开启后，“全部”页面将移除“群组”“好友”等分类，会话与话题合并并按最新消息时间排序，不再区分类型。</string>
     <string name="settings_font_size">字体大小</string>
     <string name="settings_font_small">小</string>
     <string name="settings_font_normal">标准</string>
@@ -405,6 +407,7 @@
     <string name="friends_requests_empty">暂无好友请求</string>
     <string name="friends_empty">暂无好友</string>
     <string name="friends_section">好友</string>
+    <string name="friends_no_messages">暂无消息</string>
     <string name="friends_accept">接受</string>
     <string name="friends_reject">拒绝</string>
     <string name="friends_pending">待处理</string>

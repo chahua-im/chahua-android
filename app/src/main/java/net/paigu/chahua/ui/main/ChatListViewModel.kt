@@ -113,6 +113,9 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _friendsLoading.value = true
             _friendsError.value = null
+            // 好友页按“全部”页的会话样式展示（最后一条消息、时间、未读），
+            // 先同步一次会话列表保证 DM 数据可用；失败不影响好友列表展示。
+            runCatching { store.setChats(api.chats(limit = 100).chats) }
             runCatching {
                 val friendsResp = api.friends()
                 val countResp = api.pendingFriendRequestCount()

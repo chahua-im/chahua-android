@@ -114,6 +114,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { AppGraph.settings.setHideThreadsInAllTab(enabled) }
     }
 
+    fun setSortAllByLatest(enabled: Boolean) {
+        viewModelScope.launch { AppGraph.settings.setSortAllByLatest(enabled) }
+    }
+
     fun setFontSize(key: String) {
         viewModelScope.launch { AppGraph.settings.setFontSize(key) }
     }

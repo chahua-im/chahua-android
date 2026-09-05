@@ -75,6 +75,7 @@ enum class FontSizeOption(val key: String, val scale: Float, val displayNameRes:
 data class AppSettings(
     val showAllTab: Boolean = false,
     val hideThreadsInAllTab: Boolean = false,
+    val sortAllByLatest: Boolean = false,
     val fontSizeKey: String = FontSizeOption.NORMAL.key,
     val themeColor: String = ThemeColorOption.SYSTEM.key,
     val customThemeColor: String = "",
@@ -107,6 +108,7 @@ class SettingsManager(context: Context) {
     private object Keys {
         val SHOW_ALL_TAB = booleanPreferencesKey("show_all_tab")
         val HIDE_THREADS_IN_ALL_TAB = booleanPreferencesKey("hide_threads_in_all_tab")
+        val SORT_ALL_BY_LATEST = booleanPreferencesKey("sort_all_by_latest")
         val FONT_SIZE = stringPreferencesKey("font_size")
         val THEME_COLOR = stringPreferencesKey("theme_color")
         val CUSTOM_THEME_COLOR = stringPreferencesKey("custom_theme_color")
@@ -139,6 +141,7 @@ class SettingsManager(context: Context) {
         AppSettings(
             showAllTab = p[Keys.SHOW_ALL_TAB] ?: false,
             hideThreadsInAllTab = p[Keys.HIDE_THREADS_IN_ALL_TAB] ?: false,
+            sortAllByLatest = p[Keys.SORT_ALL_BY_LATEST] ?: false,
             fontSizeKey = p[Keys.FONT_SIZE] ?: FontSizeOption.NORMAL.key,
             themeColor = p[Keys.THEME_COLOR] ?: ThemeColorOption.SYSTEM.key,
             customThemeColor = p[Keys.CUSTOM_THEME_COLOR] ?: "",
@@ -207,6 +210,11 @@ class SettingsManager(context: Context) {
     suspend fun setHideThreadsInAllTab(enabled: Boolean) {
         prefs.edit { it[Keys.HIDE_THREADS_IN_ALL_TAB] = enabled }
         snapshot = snapshot.copy(hideThreadsInAllTab = enabled)
+    }
+
+    suspend fun setSortAllByLatest(enabled: Boolean) {
+        prefs.edit { it[Keys.SORT_ALL_BY_LATEST] = enabled }
+        snapshot = snapshot.copy(sortAllByLatest = enabled)
     }
 
     suspend fun setFontSize(key: String) {

@@ -150,6 +150,7 @@ internal fun AppearanceScreen(
     settings: net.paigu.chahua.data.AppSettings,
     onShowAllTabChange: (Boolean) -> Unit,
     onHideThreadsInAllTabChange: (Boolean) -> Unit,
+    onSortAllByLatestChange: (Boolean) -> Unit,
     onFontSizeChange: (String) -> Unit,
     onThemeColorChange: (String) -> Unit,
     onThemeModeChange: (String) -> Unit,
@@ -239,6 +240,38 @@ internal fun AppearanceScreen(
                     Switch(
                         checked = settings.hideThreadsInAllTab,
                         onCheckedChange = onHideThreadsInAllTabChange,
+                        enabled = settings.showAllTab,
+                    )
+                }
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(
+                            enabled = settings.showAllTab,
+                            onClick = {
+                                onSortAllByLatestChange(!settings.sortAllByLatest)
+                            },
+                        )
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.settings_sort_all_by_latest),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_sort_all_by_latest_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                    Switch(
+                        checked = settings.sortAllByLatest,
+                        onCheckedChange = onSortAllByLatestChange,
                         enabled = settings.showAllTab,
                     )
                 }

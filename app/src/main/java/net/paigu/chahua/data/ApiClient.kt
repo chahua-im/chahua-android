@@ -77,13 +77,15 @@ class ApiClient(
             .header("Accept", "text/plain")
             .post(formBody)
             .build()
-        val response = withContextIO { okHttpClient.newCall(request).execute() }
-        return response.use { r ->
-            val text = r.body?.string().orEmpty().trim()
-            if (!r.isSuccessful || text.isEmpty()) {
-                throw ApiException(r.code, text.ifBlank { r.message })
+        return withContextIO {
+            val response = okHttpClient.newCall(request).execute()
+            response.use { r ->
+                val text = r.body?.string().orEmpty().trim()
+                if (!r.isSuccessful || text.isEmpty()) {
+                    throw ApiException(r.code, text.ifBlank { r.message })
+                }
+                text
             }
-            text
         }
     }
 
@@ -136,11 +138,12 @@ class ApiClient(
         val body = bytes.toRequestBody(contentType.toMediaType())
         val builder = Request.Builder().url(uploadUrl).put(body)
         headers.forEach { (k, v) -> builder.header(k, v) }
-        val call = okHttpClient.newCall(builder.build())
-        val response = withContextIO { call.execute() }
-        response.use { r ->
-            if (!r.isSuccessful) {
-                throw ApiException(r.code, "上传失败: ${r.body?.string() ?: r.message}")
+        withContextIO {
+            val response = okHttpClient.newCall(builder.build()).execute()
+            response.use { r ->
+                if (!r.isSuccessful) {
+                    throw ApiException(r.code, "上传失败: ${r.body?.string() ?: r.message}")
+                }
             }
         }
     }
@@ -175,11 +178,12 @@ class ApiClient(
         }
         val builder = Request.Builder().url(uploadUrl).put(body)
         headers.forEach { (k, v) -> builder.header(k, v) }
-        val call = okHttpClient.newCall(builder.build())
-        val response = withContextIO { call.execute() }
-        response.use { r ->
-            if (!r.isSuccessful) {
-                throw ApiException(r.code, "上传失败: ${r.body?.string() ?: r.message}")
+        withContextIO {
+            val response = okHttpClient.newCall(builder.build()).execute()
+            response.use { r ->
+                if (!r.isSuccessful) {
+                    throw ApiException(r.code, "上传失败: ${r.body?.string() ?: r.message}")
+                }
             }
         }
     }
@@ -207,13 +211,15 @@ class ApiClient(
             .build()
         val builder = Request.Builder().url(buildUrl(path, emptyMap())).post(body)
         session.authHeaders().forEach { (k, v) -> builder.header(k, v) }
-        val response = withContextIO { okHttpClient.newCall(builder.build()).execute() }
-        return response.use { r ->
-            val text = r.body?.string().orEmpty()
-            if (!r.isSuccessful) {
-                throw ApiException(r.code, text.ifBlank { r.message })
+        return withContextIO {
+            val response = okHttpClient.newCall(builder.build()).execute()
+            response.use { r ->
+                val text = r.body?.string().orEmpty()
+                if (!r.isSuccessful) {
+                    throw ApiException(r.code, text.ifBlank { r.message })
+                }
+                text
             }
-            text
         }
     }
 
@@ -259,13 +265,15 @@ class ApiClient(
         }
 
         val request = builder.build()
-        val response = withContextIO { okHttpClient.newCall(request).execute() }
-        return response.use { r ->
-            val text = r.body?.string().orEmpty()
-            if (!r.isSuccessful) {
-                throw ApiException(r.code, text.ifBlank { r.message })
+        return withContextIO {
+            val response = okHttpClient.newCall(request).execute()
+            response.use { r ->
+                val text = r.body?.string().orEmpty()
+                if (!r.isSuccessful) {
+                    throw ApiException(r.code, text.ifBlank { r.message })
+                }
+                text
             }
-            text
         }
     }
 

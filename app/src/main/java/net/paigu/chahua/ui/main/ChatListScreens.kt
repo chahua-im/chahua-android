@@ -99,6 +99,7 @@ import net.paigu.chahua.ui.media.MediaViewerActivity
 import net.paigu.chahua.ui.theme.LocalAppSettings
 import net.paigu.chahua.ui.theme.ChahuaTheme
 import kotlinx.coroutines.launch
+import java.time.Instant
 
 private enum class ChatTab(val titleRes: Int) {
     ALL(net.paigu.chahua.R.string.tab_all),
@@ -262,6 +263,7 @@ fun ChatListScreen(
                             if (pageTab == ChatTab.FRIENDS) {
                                 FriendsTabContent(
                                     viewModel = viewModel,
+                                    dmChats = chats.filter { it.isDm },
                                     onOpenRequests = { showFriendRequests = true },
                                     onOpenFriend = { member ->
                                         viewModel.openDmWith(
@@ -305,6 +307,7 @@ fun ChatListScreen(
                                         onOpenChat = onOpenChat,
                                         onOpenThread = onOpenThread,
                                         hideThreads = settings.hideThreadsInAllTab,
+                                        sortByLatest = settings.sortAllByLatest,
                                     )
                                     ChatTab.GROUP -> {
                                         if (groupChats.isEmpty()) {
@@ -477,7 +480,19 @@ private fun AllTabList(
     onOpenChat: (chatId: String, title: String) -> Unit,
     onOpenThread: (ThreadDto) -> Unit,
     hideThreads: Boolean,
+    sortByLatest: Boolean,
 ) {
+    // “使用最新消息排序”：去掉分组标题，群聊 / 好友私聊 / 话题合并成一条
+    // 按最新动态时间倒序的列表，不再区分类型。
+    if (sortByLatest) {
+        AllConversationsList(
+            chats = chats,
+            threads = if (hideThreads) emptyList() else threads,
+            onOpenChat = onOpenChat,
+            onOpenThread = onOpenThread,
+        )
+        return
+    }
     val groupChats = chats.filterNot { it.isDm }
     val dmChats = chats.filter { it.isDm }
     val showThreads = !hideThreads && threads.isNotEmpty()
@@ -520,6 +535,101 @@ private fun AllTabList(
     }
 }
 
+/** 扁平化的会话条目（不区分群聊 / 好友私聊 / 话题）。 */
+private data class AllConversationItem(
+    val key: String,
+    val avatarUrl: String?,
+    val avatarName: String,
+    val title: String,
+    val preview: String,
+    val timeIso: String?,
+    val unreadCount: Long,
+    val onClick: () -> Unit,
+    val overlayAvatarUrl: String? = null,
+    val overlayAvatarName: String? = null,
+)
+
+@Composable
+private fun AllConversationsList(
+    chats: List<ChatDto>,
+    threads: List<ThreadDto>,
+    onOpenChat: (chatId: String, title: String) -> Unit,
+    onOpenThread: (ThreadDto) -> Unit,
+) {
+    val unknownSender = stringResource(R.string.message_sender_unknown)
+    val groupFallback = stringResource(R.string.tab_group)
+    val items = buildList {
+        chats.forEach { chat ->
+            val title = chat.displayName ?: groupFallback
+            add(
+                AllConversationItem(
+                    key = "chat:${chat.id}",
+                    avatarUrl = if (chat.isDm) chat.peer?.avatarUrl else chat.avatar,
+                    avatarName = title,
+                    title = title,
+                    preview = messagePreviewWithSender(chat.lastMessage, unknownSender),
+                    timeIso = chat.lastMessageAt,
+                    unreadCount = chat.unreadCount,
+                    onClick = { onOpenChat(chat.id, title) },
+                ),
+            )
+        }
+        threads.forEach { thread ->
+            val root = thread.threadRootMessage
+            val title = messagePreviewText(root?.message, root?.messageType)
+                .takeIf { it.isNotBlank() }
+                ?: thread.chatName
+            add(
+                AllConversationItem(
+                    key = "thread:${thread.chatId}:${root?.id}",
+                    avatarUrl = thread.chatAvatar,
+                    avatarName = thread.chatName,
+                    title = title,
+                    preview = messagePreviewWithSender(
+                        thread.lastReply ?: root,
+                        unknownSender,
+                    ),
+                    timeIso = thread.lastReplyAt ?: root?.createdAt,
+                    unreadCount = thread.unreadCount,
+                    onClick = { onOpenThread(thread) },
+                    overlayAvatarUrl = root?.sender?.avatarUrl,
+                    overlayAvatarName = root?.sender?.name,
+                ),
+            )
+        }
+    }
+    if (items.isEmpty()) {
+        PullRefreshableCenteredContent {
+            EmptyState(stringResource(R.string.empty_all))
+        }
+        return
+    }
+    val sortedItems = items.sortedByDescending {
+        parseListInstantOrNull(it.timeIso) ?: Instant.MIN
+    }
+    LazyColumn {
+        items(sortedItems, key = { it.key }) { item ->
+            ConversationRow(
+                avatarUrl = item.avatarUrl,
+                avatarName = item.avatarName,
+                title = item.title,
+                preview = item.preview,
+                timeText = formatListTime(item.timeIso),
+                unreadCount = item.unreadCount,
+                onClick = item.onClick,
+                overlayAvatarUrl = item.overlayAvatarUrl,
+                overlayAvatarName = item.overlayAvatarName,
+            )
+            HorizontalDivider()
+        }
+    }
+}
+
+private fun parseListInstantOrNull(iso: String?): Instant? =
+    iso?.let { value ->
+        runCatching { Instant.parse(value) }.getOrNull()
+    }
+
 @Composable
 private fun PullRefreshableCenteredContent(content: @Composable () -> Unit) {
     Box(
@@ -548,19 +658,69 @@ internal fun SectionHeader(text: String) {
 @Composable
 private fun ChatItem(chat: ChatDto, onClick: () -> Unit) {
     val title = chat.displayName ?: stringResource(R.string.tab_group)
+    ConversationRow(
+        avatarUrl = if (chat.isDm) chat.peer?.avatarUrl else chat.avatar,
+        avatarName = title,
+        title = title,
+        preview = messagePreviewWithSender(
+            chat.lastMessage,
+            stringResource(R.string.message_sender_unknown),
+        ),
+        timeText = formatListTime(chat.lastMessageAt),
+        unreadCount = chat.unreadCount,
+        onClick = onClick,
+    )
+}
+
+/**
+ * 会话通用列表行：头像 + 标题 + 消息预览 + 右侧时间/未读。
+ * “全部”“好友”页面共用同一布局，保证两处列表显示一致。
+ * 话题可传 overlay* 在群头像上叠加发起人头像。
+ */
+@Composable
+internal fun ConversationRow(
+    avatarUrl: String?,
+    avatarName: String?,
+    title: String,
+    preview: String,
+    timeText: String,
+    unreadCount: Long,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    overlayAvatarUrl: String? = null,
+    overlayAvatarName: String? = null,
+) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        UserAvatar(
-            url = if (chat.isDm) chat.peer?.avatarUrl else chat.avatar,
-            name = title,
-            size = 48.dp,
-            showBackground = false,
-        )
+        Box(modifier = Modifier.size(48.dp)) {
+            UserAvatar(
+                url = avatarUrl,
+                name = avatarName,
+                size = 48.dp,
+                showBackground = false,
+            )
+            if (overlayAvatarUrl != null || overlayAvatarName != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(1.dp),
+                ) {
+                    UserAvatar(
+                        url = overlayAvatarUrl,
+                        name = overlayAvatarName,
+                        size = 24.dp,
+                    )
+                }
+            }
+        }
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -571,10 +731,7 @@ private fun ChatItem(chat: ChatDto, onClick: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = messagePreviewWithSender(
-                    chat.lastMessage,
-                    stringResource(R.string.message_sender_unknown),
-                ),
+                text = preview,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -584,14 +741,14 @@ private fun ChatItem(chat: ChatDto, onClick: () -> Unit) {
         Spacer(modifier = Modifier.width(8.dp))
         Column(horizontalAlignment = Alignment.End) {
             Text(
-                text = formatListTime(chat.lastMessageAt),
+                text = timeText,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(modifier = Modifier.height(4.dp))
-            if (chat.unreadCount > 0) {
+            if (unreadCount > 0) {
                 Badge {
-                    Text(if (chat.unreadCount > 99) "99+" else chat.unreadCount.toString())
+                    Text(if (unreadCount > 99) "99+" else unreadCount.toString())
                 }
             }
         }

@@ -20,7 +20,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.window.embedding.ActivityEmbeddingController
 import androidx.core.content.FileProvider
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -788,7 +794,15 @@ internal fun ChatScreen(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     )
                 }
-                if (showEmojiPanel) {
+                AnimatedVisibility(
+                    visible = showEmojiPanel,
+                    enter = expandVertically(tween(durationMillis = 220)) + fadeIn(
+                        tween(durationMillis = 180),
+                    ),
+                    exit = shrinkVertically(tween(durationMillis = 160)) + fadeOut(
+                        tween(durationMillis = 120),
+                    ),
+                ) {
                     StickerPanel(
                         viewModel = viewModel,
                         onSendSticker = { sticker ->
@@ -996,9 +1010,11 @@ internal fun ChatScreen(
                             burstClose(item, newerItem)
                         val showAvatar = !grouping || !sameSenderWithNext
                         val showSenderName = !grouping || !sameSenderWithPrevious
-                        val itemModifier = Modifier.padding(
-                            top = if (grouping && sameSenderWithPrevious) 0.dp else 6.dp,
-                        )
+                        val itemModifier = Modifier
+                            .padding(
+                                top = if (grouping && sameSenderWithPrevious) 0.dp else 6.dp,
+                            )
+                            .animateItem()
                         when (item) {
                             is ChatItem.Server -> MessageBubble(
                                 message = item.message,
