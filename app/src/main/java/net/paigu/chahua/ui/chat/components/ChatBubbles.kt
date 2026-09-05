@@ -119,6 +119,7 @@ internal fun MessageBubble(
     onOpenReply: () -> Unit,
     onOpenThread: () -> Unit,
     onAvatarClick: (UserDto) -> Unit,
+    onAvatarLongClick: ((UserDto) -> Unit)? = null,
     onEdit: () -> Unit,
     quickReactionEmojis: List<String>,
     onQuickReact: (String) -> Unit,
@@ -158,6 +159,7 @@ internal fun MessageBubble(
                     modifier = Modifier.padding(top = 20.dp),
                     size = 32.dp,
                     onClick = { onAvatarClick(message.sender) },
+                    onLongClick = { onAvatarLongClick?.invoke(message.sender) },
                 )
                 Spacer(modifier = Modifier.width(8.dp))
             } else {

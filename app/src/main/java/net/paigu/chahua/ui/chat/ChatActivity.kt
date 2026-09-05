@@ -584,6 +584,26 @@ internal fun ChatScreen(
         }
     }
 
+    /** 长按他人头像：在输入框光标处快速插入 @提及。 */
+    fun quickMention(user: UserDto) {
+        if (user.uid == viewModel.myUid()) return
+        val token = "@[uid:${user.uid}] "
+        val current = input
+        val start = current.selection.start.coerceIn(0, current.text.length)
+        val end = current.selection.end.coerceIn(start, current.text.length)
+        val head = current.text.substring(0, start)
+        val tail = current.text.substring(end)
+        val prefix = if (head.isNotBlank() && !head.endsWith(" ")) " " else ""
+        val newText = head + prefix + token + tail
+        val cursor = head.length + prefix.length + token.length
+        input = TextFieldValue(
+            text = newText,
+            selection = TextRange(cursor),
+        )
+        showEmojiPanel = false
+        keyboard?.show()
+    }
+
     val nearBottom by remember {
         derivedStateOf {
             val info = listState.layoutInfo
@@ -1119,6 +1139,7 @@ internal fun ChatScreen(
                                 },
                                 onOpenThread = { onOpenThread(item.message.id) },
                                 onAvatarClick = { profileUser = it },
+                                onAvatarLongClick = { quickMention(it) },
                                 onEdit = {
                                     editingMessage = item.message
                                     input = TextFieldValue(
