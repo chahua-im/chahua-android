@@ -30,7 +30,7 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 class SessionManager(context: Context) {
 
     companion object {
-        /** 默认服务端（生产环境，nginx 反代去 /_api 前缀后转发到后端）。 */
+        /** 默认后端端URL。 */
         const val DEFAULT_SERVER_URL = "https://chahui.app/_api"
 
         fun looksLikeJwt(input: String): Boolean {
