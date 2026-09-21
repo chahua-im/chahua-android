@@ -23,6 +23,7 @@ import net.paigu.chahua.data.ChatStore
 import net.paigu.chahua.data.ErrorLoggingInterceptor
 import net.paigu.chahua.data.SessionManager
 import net.paigu.chahua.data.SettingsManager
+import net.paigu.chahua.data.StickerPrecache
 import net.paigu.chahua.data.SyncManager
 import net.paigu.chahua.data.UserAgentInterceptor
 import net.paigu.chahua.service.ChatMessagingService
@@ -63,6 +64,9 @@ object AppGraph {
     lateinit var imageLoader: ImageLoader
         private set
 
+    lateinit var stickerPrecache: StickerPrecache
+        private set
+
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     fun init(application: Application) {
@@ -77,12 +81,18 @@ object AppGraph {
         syncManager = SyncManager(api, store)
         engine.onConnected = { scope.launch { syncManager.syncAll() } }
         imageLoader = buildImageLoader(application, session)
+        stickerPrecache = StickerPrecache(application, api, session, imageLoader)
     }
 
     /** 启动后台消息 Service（前台服务，负责 WebSocket 收发与推送通知）。 */
     fun startMessaging(context: Context) {
         val intent = Intent(context, ChatMessagingService::class.java)
         ContextCompat.startForegroundService(context, intent)
+    }
+
+    /** 进入 App 后触发表情包预缓存（后台执行，失败静默，下次进入自动重试）。 */
+    fun startStickerPrecache() {
+        stickerPrecache.start()
     }
 
     fun stopMessaging(context: Context) {

@@ -137,6 +137,8 @@ class MainActivity : FragmentActivity() {
         maybeShowBatteryOptimizationPrompt()
         maybeCheckForUpdates()
         AppGraph.startMessaging(this)
+        // 进入 App 后立即在后台预热当前账号的表情包，表情面板打开即可秒显。
+        AppGraph.startStickerPrecache()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
