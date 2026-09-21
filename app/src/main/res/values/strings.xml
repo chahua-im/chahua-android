@@ -192,6 +192,14 @@
     <string name="settings_unfavorite">Unfavorite</string>
     <string name="settings_unfavorite_confirm_title">Unfavorite sticker pack</string>
     <string name="settings_unfavorite_confirm">Remove this sticker pack from your favorites?</string>
+    <string name="settings_sticker_precache_title">Sticker pre-cache</string>
+    <string name="settings_sticker_precache_idle">Cached automatically on app launch, so stickers open instantly</string>
+    <string name="settings_sticker_precache_starting">Preparing…</string>
+    <string name="settings_sticker_precache_running">Caching %1$d/%2$d…</string>
+    <string name="settings_sticker_precache_done">%1$d stickers cached</string>
+    <string name="settings_sticker_precache_partial">Cached %1$d/%2$d, %3$d failed</string>
+    <string name="settings_sticker_precache_failed">Pre-cache failed: %1$s</string>
+    <string name="settings_sticker_precache_action">Cache now</string>
 
     <string name="chat_thread_subtitle">Topic · %1$d replies</string>
     <string name="chat_status_online">Live</string>

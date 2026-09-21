@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.paigu.chahua.core.AppGraph
+import net.paigu.chahua.data.StickerPrecacheState
 import net.paigu.chahua.data.models.StickerPackDetailResponse
 import net.paigu.chahua.data.models.StickerPackSummaryDto
 import net.paigu.chahua.data.models.UpdateStickerPackOrderItemBody
@@ -42,6 +43,14 @@ class StickersViewModel(application: Application) : AndroidViewModel(application
 
     private val _detailState = MutableStateFlow(StickerPackDetailUiState())
     val detailState: StateFlow<StickerPackDetailUiState> = _detailState.asStateFlow()
+
+    /** 表情包预缓存进度：进入 App 后自动跑一轮，设置页也可以手动补一次。 */
+    val precacheState: StateFlow<StickerPrecacheState> = AppGraph.stickerPrecache.state
+
+    /** 重新触发一轮预缓存（已缓存的图片会被跳过，只补缺失的）。 */
+    fun precacheStickers() {
+        AppGraph.stickerPrecache.start(force = true)
+    }
 
     /** 加载收藏（订阅）的表情包，自己创建的排在前面。 */
     fun loadPacks() {

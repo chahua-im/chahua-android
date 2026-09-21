@@ -127,6 +127,7 @@ import net.paigu.chahua.data.AppLanguage
 import net.paigu.chahua.data.FontSizeOption
 import net.paigu.chahua.data.LogLevelOption
 import net.paigu.chahua.data.SessionManager
+import net.paigu.chahua.data.StickerPrecacheState
 import net.paigu.chahua.data.ThemeColorOption
 import net.paigu.chahua.data.ThemeModeOption
 import net.paigu.chahua.data.models.StickerPackSummaryDto
@@ -154,6 +155,7 @@ internal fun StickerPacksScreen(
     onOpenPack: (String) -> Unit,
 ) {
     val packsState by stickersViewModel.packsState.collectAsState()
+    val precacheState by stickersViewModel.precacheState.collectAsState()
     val context = LocalContext.current
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -192,6 +194,10 @@ internal fun StickerPacksScreen(
             PinnedReactionsCard(
                 pinnedReactions = pinnedReactions,
                 onPinnedReactionsChange = onPinnedReactionsChange,
+            )
+            StickerPrecacheCard(
+                state = precacheState,
+                onPrecache = { stickersViewModel.precacheStickers() },
             )
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 when {
@@ -299,6 +305,82 @@ private fun PinnedReactionsCard(
             )
         }
     }
+}
+
+/**
+ * 表情包预缓存卡片：进入 App 后会自动在后台缓存订阅的表情包，
+ * 这里展示进度，并提供一次手动补齐（已缓存的图片会被跳过）。
+ */
+@Composable
+private fun StickerPrecacheCard(
+    state: StickerPrecacheState,
+    onPrecache: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.settings_sticker_precache_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = precacheSummary(state),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (state.lastError != null) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            if (state.running) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                TextButton(onClick = onPrecache) {
+                    Text(stringResource(R.string.settings_sticker_precache_action))
+                }
+            }
+        }
+    }
+}
+
+/** 按预缓存状态拼出卡片副标题。 */
+@Composable
+private fun precacheSummary(state: StickerPrecacheState): String = when {
+    state.lastError != null ->
+        stringResource(R.string.settings_sticker_precache_failed, state.lastError)
+    state.running && state.total <= 0 ->
+        stringResource(R.string.settings_sticker_precache_starting)
+    state.running ->
+        stringResource(
+            R.string.settings_sticker_precache_running,
+            state.handled,
+            state.total,
+        )
+    state.finishedAt == 0L ->
+        stringResource(R.string.settings_sticker_precache_idle)
+    state.failed > 0 ->
+        stringResource(
+            R.string.settings_sticker_precache_partial,
+            state.downloaded + state.cached,
+            state.total,
+            state.failed,
+        )
+    else ->
+        stringResource(R.string.settings_sticker_precache_done, state.total)
 }
 
 /** 按 Unicode 字符簇拆分文本并去重、限量，用于从输入框中提取表情。 */

@@ -190,6 +190,14 @@
     <string name="settings_unfavorite">取消收藏</string>
     <string name="settings_unfavorite_confirm_title">取消收藏</string>
     <string name="settings_unfavorite_confirm">确定要将该表情包从收藏中移除吗？</string>
+    <string name="settings_sticker_precache_title">表情包预缓存</string>
+    <string name="settings_sticker_precache_idle">进入 App 后自动缓存，打开即可秒显</string>
+    <string name="settings_sticker_precache_starting">正在准备…</string>
+    <string name="settings_sticker_precache_running">正在缓存 %1$d/%2$d…</string>
+    <string name="settings_sticker_precache_done">已缓存 %1$d 张表情</string>
+    <string name="settings_sticker_precache_partial">已缓存 %1$d/%2$d 张，%3$d 张失败</string>
+    <string name="settings_sticker_precache_failed">预缓存失败：%1$s</string>
+    <string name="settings_sticker_precache_action">立即缓存</string>
 
     <string name="chat_thread_subtitle">话题 · %1$d 条回复</string>
     <string name="chat_status_online">在线</string>
