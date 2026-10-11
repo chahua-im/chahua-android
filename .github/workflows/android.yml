@@ -39,6 +39,8 @@ jobs:
       - name: Decode Keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.jks
+          # 前置校验：Secret 未配置或为空时立即报错，避免拖到签名步骤才失败
+          test -s release.jks || { echo "::error::KEYSTORE_BASE64 is empty or not configured"; exit 1; }
 
       # 5. 修复 gradlew 执行权限（避免 Permission denied）
       - name: Make gradlew executable
@@ -80,10 +82,11 @@ jobs:
       # 10. 重命名 APK，文件名带上版本号（取自标签名，如 app-release-v1.2.1.apk）
       - name: Rename APK with version
         run: |
-          VERSION="${{ github.ref_name }}"
+          # 手动触发时 ref_name 是分支名（如 feature/xxx），把 / 替换成 - 避免 mv 失败
+          VERSION=$(echo "${{ github.ref_name }}" | tr '/' '-')
           mv app/build/outputs/apk/release/app-release.apk \
-             "app/build/outputs/apk/release/app-release-${VERSION}.apk"
-          echo "APK_NAME=app-release-${VERSION}.apk" >> "$GITHUB_ENV"
+             "app/build/outputs/apk/release/chahua-release-${VERSION}.apk"
+          echo "APK_NAME=chahua-release-${VERSION}.apk" >> "$GITHUB_ENV"
 
       # 11. 将最终的 APK 上传为工作流产物 (Artifact)，方便手动下载
       - name: Upload APK as Artifact
