@@ -4,9 +4,11 @@ import android.app.Application
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +33,7 @@ import net.paigu.chahua.data.MAX_DISTINCT_REACTIONS_PER_MESSAGE
 import net.paigu.chahua.data.MAX_REACTIONS_PER_USER_PER_MESSAGE
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.R
+import net.paigu.chahua.service.ChatMessagingService
 import net.paigu.chahua.ui.media.VideoCompressor
 import java.time.Instant
 import java.util.UUID
@@ -66,6 +69,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var messageJob: Job? = null
     private var mentionSearchJob: Job? = null
 
+    /** 会话页是否在前台可见（不可见时收到的新消息保持未读）。 */
+    private val _visible = MutableStateFlow(false)
+
+    /** 最近一次已标记已读的消息 id，避免重复请求。 */
+    private var lastMarkedReadId: String? = null
+
+    /** 待补发的已读目标（合并短时间内的多次触发）。 */
+    private var pendingReadId: String? = null
+    private var readJob: Job? = null
+
+    /** 由界面在 ON_RESUME / ON_PAUSE 时调用。 */
+    fun setVisible(visible: Boolean) {
+        _visible.value = visible
+    }
+
     fun init(
         chatId: String,
         title: String,
@@ -78,6 +96,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         currentKey = key
         initialized = true
         messageJob?.cancel()
+        // 切换会话时丢弃上一个会话的已读状态与待发请求，避免串会话。
+        readJob?.cancel()
+        readJob = null
+        lastMarkedReadId = null
+        pendingReadId = null
         _chatId.value = chatId
         _threadId.value = threadId
         _pending.value = emptyList()
@@ -92,9 +115,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             combine(
                 store.messagesFor(chatId, threadId),
                 _pending,
-            ) { serverList, pendingList ->
-                mergeChatItems(serverList, pendingList)
-            }.collect { _messages.value = it }
+                _visible,
+            ) { serverList, pendingList, visible ->
+                Triple(serverList, pendingList, visible)
+            }.collect { (serverList, pendingList, visible) ->
+                _messages.value = mergeChatItems(serverList, pendingList)
+                // 会话页可见时把最新一条他人消息标记为已读：
+                // 否则在会话已打开时收到的新消息只会让红点（未读数）一直留着。
+                if (visible) {
+                    serverList.lastOrNull { it.sender.uid != myUid() }?.let { markRead(it.id) }
+                }
+            }
         }
         // 群角色用于置顶等管理员操作，置顶列表用于横幅与取消置顶。
         viewModelScope.launch {
@@ -1093,17 +1124,43 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun getString(id: Int, vararg args: Any?): String =
         getApplication<Application>().getString(id, *args)
 
+    /**
+     * 标记会话 / 话题已读，并同步本地未读数与系统通知。
+     * 消息密集时会被多次触发，这里合并成串行请求，避免请求风暴。
+     */
     private fun markRead(lastMessageId: String) {
         val chatId = _chatId.value ?: return
+        if (lastMessageId == lastMarkedReadId) return
+        lastMarkedReadId = lastMessageId
+        pendingReadId = lastMessageId
+        if (readJob?.isActive == true) return
         val threadId = _threadId.value
-        viewModelScope.launch {
-            if (threadId.isNullOrBlank()) {
-                runCatching { api.markChatRead(chatId, lastMessageId) }
-                    .onSuccess { store.markChatRead(chatId, it.lastReadMessageId, it.unreadCount) }
-            } else {
-                runCatching { api.markThreadRead(threadId, lastMessageId) }
-                    .onSuccess { store.markThreadRead(chatId, threadId, it.unreadCount) }
+        readJob = viewModelScope.launch {
+            while (true) {
+                val target = pendingReadId ?: break
+                pendingReadId = null
+                if (threadId.isNullOrBlank()) {
+                    runCatching { api.markChatRead(chatId, target) }
+                        .onSuccess {
+                            store.markChatRead(chatId, it.lastReadMessageId, it.unreadCount)
+                            cancelNotification(ChatMessagingService.chatNotificationId(chatId))
+                        }
+                } else {
+                    runCatching { api.markThreadRead(threadId, target) }
+                        .onSuccess {
+                            store.markThreadRead(chatId, threadId, it.unreadCount)
+                            cancelNotification(ChatMessagingService.threadNotificationId(chatId, threadId))
+                        }
+                }
+                delay(200)
             }
+        }
+    }
+
+    /** 已读后撤掉该会话/话题的系统通知，避免与应用内状态不一致。 */
+    private fun cancelNotification(notificationId: Int) {
+        runCatching {
+            NotificationManagerCompat.from(getApplication()).cancel(notificationId)
         }
     }
 
