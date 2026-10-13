@@ -206,6 +206,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { AppGraph.settings.setReplyWithMention(enabled) }
     }
 
+    fun setTapTitleToScrollTop(enabled: Boolean) {
+        viewModelScope.launch { AppGraph.settings.setTapTitleToScrollTop(enabled) }
+    }
+
     fun setDeveloperEnabled(enabled: Boolean) {
         viewModelScope.launch { AppGraph.settings.setDeveloperEnabled(enabled) }
     }

@@ -70,6 +70,8 @@
     <string name="settings_show_avatars_in_messages_desc">关闭后，同一用户连续发送的消息只在最后一条消息旁显示头像。</string>
     <string name="settings_reply_with_mention">回复时自动 @ 对方</string>
     <string name="settings_reply_with_mention_desc">回复消息（右滑或菜单选择）时自动在输入框插入对方的 @提及；回复自己的消息时不插入。</string>
+    <string name="settings_tap_title_scroll_top">点击标题栏回到顶部</string>
+    <string name="settings_tap_title_scroll_top_desc">点击聊天页标题栏快速滚到已加载消息的顶部。</string>
     <string name="settings_cache_total">占用空间</string>
     <string name="settings_cache_images">图片缓存</string>
     <string name="settings_cache_other">其他缓存</string>
@@ -258,6 +260,7 @@
     <string name="chat_create_permission_denied">没有新建群聊的权限</string>
     <string name="chat_reply_preview">回复 %1$s：%2$s</string>
     <string name="chat_reply_to">回复</string>
+    <string name="chat_scroll_to_top">回到顶部</string>
     <string name="chat_reply_message">消息</string>
     <string name="chat_play">播放</string>
     <string name="chat_react">表情回应</string>

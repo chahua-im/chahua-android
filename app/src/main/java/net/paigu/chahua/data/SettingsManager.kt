@@ -87,6 +87,8 @@ data class AppSettings(
     val enterToSend: Boolean = true,
     /** 回复消息时自动在输入框插入对原消息发送者的 @提及（回复自己的消息时不插入）。 */
     val replyWithMention: Boolean = false,
+    /** 点击聊天标题栏快速回到消息顶部。 */
+    val tapTitleToScrollTop: Boolean = true,
     val developerEnabled: Boolean = false,
     val showUidInChat: Boolean = false,
     val showLatency: Boolean = false,
@@ -122,6 +124,7 @@ class SettingsManager(context: Context) {
             booleanPreferencesKey("battery_optimization_prompt_dismissed")
         val ENTER_TO_SEND = booleanPreferencesKey("enter_to_send")
         val REPLY_WITH_MENTION = booleanPreferencesKey("reply_with_mention")
+        val TAP_TITLE_SCROLL_TOP = booleanPreferencesKey("tap_title_scroll_top")
         val DEVELOPER_ENABLED = booleanPreferencesKey("developer_enabled")
         val SHOW_UID_IN_CHAT = booleanPreferencesKey("show_uid_in_chat")
         val SHOW_LATENCY = booleanPreferencesKey("show_latency")
@@ -156,6 +159,7 @@ class SettingsManager(context: Context) {
                 p[Keys.BATTERY_OPTIMIZATION_PROMPT_DISMISSED] ?: false,
             enterToSend = p[Keys.ENTER_TO_SEND] ?: true,
             replyWithMention = p[Keys.REPLY_WITH_MENTION] ?: false,
+            tapTitleToScrollTop = p[Keys.TAP_TITLE_SCROLL_TOP] ?: true,
             developerEnabled = p[Keys.DEVELOPER_ENABLED] ?: false,
             showUidInChat = p[Keys.SHOW_UID_IN_CHAT] ?: false,
             showLatency = p[Keys.SHOW_LATENCY] ?: false,
@@ -274,6 +278,11 @@ class SettingsManager(context: Context) {
     suspend fun setReplyWithMention(enabled: Boolean) {
         prefs.edit { it[Keys.REPLY_WITH_MENTION] = enabled }
         snapshot = snapshot.copy(replyWithMention = enabled)
+    }
+
+    suspend fun setTapTitleToScrollTop(enabled: Boolean) {
+        prefs.edit { it[Keys.TAP_TITLE_SCROLL_TOP] = enabled }
+        snapshot = snapshot.copy(tapTitleToScrollTop = enabled)
     }
 
     suspend fun setDeveloperEnabled(enabled: Boolean) {

@@ -737,7 +737,21 @@ internal fun ChatScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            // 点击标题栏：快速滚到已加载消息的顶部（最早一条）；
+                            // 滚到顶后继续上滑仍会自动加载更早的历史。
+                            // 可在「设置 → 通用」里关闭。
+                            .clickable(
+                                enabled = appSettings.tapTitleToScrollTop && messages.isNotEmpty(),
+                                onClickLabel = stringResource(R.string.chat_scroll_to_top),
+                            ) {
+                                scope.launch {
+                                    listState.animateScrollToItem(messages.lastIndex)
+                                }
+                            },
+                    ) {
                         Text(
                             text = uiState.title,
                             maxLines = 1,
