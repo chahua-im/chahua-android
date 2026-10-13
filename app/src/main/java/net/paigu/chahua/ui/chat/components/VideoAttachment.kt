@@ -18,7 +18,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -29,8 +28,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -56,12 +58,15 @@ import net.paigu.chahua.data.VideoCacheState
 import net.paigu.chahua.data.VideoThumbnail
 import net.paigu.chahua.data.models.AttachmentDto
 import net.paigu.chahua.ui.main.formatBytes
+import java.util.Locale
+import kotlinx.coroutines.delay
 
 /**
  * 视频附件气泡：
- * - 未缓存时右上角显示下载按钮 + 视频大小，点击后开始缓存并**在聊天里直接播放预览**；
- * - 缓存中显示进度；已缓存则直接点开播放（全屏查看器同样走缓存）；
- * - 预览播放器带全屏 / 关闭按钮。
+ * - 进入聊天即显示封面（MediaMetadataRetriever 抽帧，已缓存时本地读取）；
+ * - 未缓存时右上角是下载按钮 + 视频大小，点击后开始缓存并在聊天里**静音预览**；
+ * - 缓存中显示进度，缓存完成后右上角换成视频时长；
+ * - 点击画面（含预览）直接全屏播放，全屏页默认不显示控件。
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -78,13 +83,13 @@ internal fun VideoAttachmentBubble(
     val cacheState = states[url] ?: if (initiallyCached) VideoCacheState.Cached else VideoCacheState.Idle
     var previewing by remember(url) { mutableStateOf(false) }
     var thumbnail by remember(url) { mutableStateOf<ImageBitmap?>(null) }
+    var durationMs by remember(url) { mutableLongStateOf(0L) }
 
-    // 封面：已缓存/正在缓存时用 MediaMetadataRetriever 抽第一帧（数据走缓存，不额外下载整段视频）。
-    val shouldLoadThumbnail = cacheState is VideoCacheState.Cached || cacheState is VideoCacheState.Downloading
-    LaunchedEffect(url, shouldLoadThumbnail) {
-        if (thumbnail == null && shouldLoadThumbnail) {
-            thumbnail = VideoThumbnail.load(context, url, attachment.size)?.asImageBitmap()
-        }
+    // 封面：无论是否缓存都尝试生成（取帧数据走缓存数据源，只读解码需要的片段）。
+    LaunchedEffect(url) {
+        val poster = VideoThumbnail.load(context, url, attachment.size) ?: return@LaunchedEffect
+        durationMs = poster.durationMs
+        poster.bitmap?.let { thumbnail = it.asImageBitmap() }
     }
     val ratio = remember(attachment.width, attachment.height, thumbnail) {
         val w = attachment.width ?: 0
@@ -103,8 +108,9 @@ internal fun VideoAttachmentBubble(
         InlineVideoPreview(
             url = url,
             aspectRatio = ratio,
+            onOpenFullscreen = onOpenViewer,
             onClose = { previewing = false },
-            onExpand = onOpenViewer,
+            onDurationKnown = { if (it > 0L) durationMs = it },
             modifier = modifier,
         )
         return
@@ -161,8 +167,9 @@ internal fun VideoAttachmentBubble(
         VideoCacheBadge(
             state = cacheState,
             sizeBytes = attachment.size,
+            durationMs = durationMs,
             onDownload = {
-                // 点击后：开始缓存 + 直接在聊天里播放预览。
+                // 点击后：开始缓存 + 在聊天里静音预览（再点画面即全屏）。
                 VideoCache.preCache(url, attachment.size)
                 previewing = true
             },
@@ -173,15 +180,16 @@ internal fun VideoAttachmentBubble(
     }
 }
 
-/** 右上角的缓存状态角标：未缓存=下载按钮+大小，缓存中=进度，已缓存=不显示。 */
+/** 右上角角标：未缓存=下载按钮+大小，缓存中=进度，已缓存=视频时长。 */
 @Composable
 private fun VideoCacheBadge(
     state: VideoCacheState,
     sizeBytes: Long,
+    durationMs: Long,
     onDownload: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (state is VideoCacheState.Cached) return
+    if (state is VideoCacheState.Cached && durationMs <= 0L) return
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(50))
@@ -189,8 +197,15 @@ private fun VideoCacheBadge(
             .combinedClickable(onClick = onDownload, onLongClick = onDownload)
             .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
-        when (state) {
-            is VideoCacheState.Downloading -> {
+        when {
+            state is VideoCacheState.Cached -> {
+                Text(
+                    text = formatDuration(durationMs),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+            state is VideoCacheState.Downloading -> {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(12.dp),
@@ -227,6 +242,19 @@ private fun VideoCacheBadge(
     }
 }
 
+/** 视频时长：mm:ss（超过一小时显示 h:mm:ss）。 */
+internal fun formatDuration(durationMs: Long): String {
+    val totalSeconds = (durationMs / 1000).coerceAtLeast(0)
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) {
+        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.US, "%02d:%02d", minutes, seconds)
+    }
+}
+
 private fun downloadProgressText(state: VideoCacheState.Downloading, sizeBytes: Long): String {
     val total = if (state.total > 0) state.total else sizeBytes
     return if (total > 0) {
@@ -237,17 +265,23 @@ private fun downloadProgressText(state: VideoCacheState.Downloading, sizeBytes: 
     }
 }
 
-/** 聊天内嵌预览播放器：走视频缓存，切到后台自动暂停，离开组合即释放。 */
+/**
+ * 聊天内嵌预览播放器：**静音**、无播放器控件，点画面直接进全屏；
+ * 走视频缓存，切到后台自动暂停，离开组合即释放。
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun InlineVideoPreview(
     url: String,
     aspectRatio: Float,
+    onOpenFullscreen: () -> Unit,
     onClose: () -> Unit,
-    onExpand: () -> Unit,
+    onDurationKnown: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = context as? LifecycleOwner
+    val currentOnDurationKnown by rememberUpdatedState(onDurationKnown)
     val player = remember(url) {
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(VideoCache.mediaSourceFactory(url))
@@ -255,9 +289,21 @@ private fun InlineVideoPreview(
             .apply {
                 setMediaItem(MediaItem.fromUri(url))
                 repeatMode = Player.REPEAT_MODE_OFF
+                volume = 0f // 聊天里预览静音，点开全屏才出声
                 playWhenReady = true
                 prepare()
             }
+    }
+    // 播放器解析出时长后回传给气泡（右上角角标改用时长显示）。
+    LaunchedEffect(player) {
+        while (true) {
+            val duration = player.duration
+            if (duration > 0) {
+                currentOnDurationKnown(duration)
+                break
+            }
+            delay(500)
+        }
     }
     DisposableEffect(player, lifecycleOwner) {
         val observer = object : DefaultLifecycleObserver {
@@ -281,47 +327,43 @@ private fun InlineVideoPreview(
             .width(240.dp)
             .aspectRatio(aspectRatio)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.Black),
+            .background(Color.Black)
+            .combinedClickable(
+                onClick = onOpenFullscreen,
+                onLongClick = onOpenFullscreen,
+            ),
     ) {
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
-                    useController = true
-                    setShowNextButton(false)
-                    setShowPreviousButton(false)
+                    // 预览不带控件：点画面直接全屏，控件留给全屏页。
+                    useController = false
                     this.player = player
                 }
             },
             modifier = Modifier.fillMaxSize(),
         )
-        Row(
+        RoundIconButton(
+            icon = Icons.Filled.Close,
+            contentDescription = stringResource(R.string.chat_video_close_preview),
+            onClick = onClose,
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            RoundIconButton(
-                icon = Icons.Filled.Fullscreen,
-                contentDescription = stringResource(R.string.chat_video_fullscreen),
-                onClick = onExpand,
-            )
-            RoundIconButton(
-                icon = Icons.Filled.Close,
-                contentDescription = stringResource(R.string.chat_video_close_preview),
-                onClick = onClose,
-            )
-        }
+        )
     }
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun RoundIconButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .size(28.dp)
             .clip(CircleShape)
             .background(Color.Black.copy(alpha = 0.55f))

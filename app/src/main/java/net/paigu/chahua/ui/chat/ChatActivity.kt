@@ -310,8 +310,15 @@ class ChatActivity : ComponentActivity() {
                         )
                     },
                     onOpenMedia = { items, index ->
+                        // 视频：直接全屏播放，不先弹查看器控件。
+                        val hideControls = items.getOrNull(index)?.kind?.startsWith("video") == true
                         startActivity(
-                            MediaViewerActivity.createIntent(this, items, index),
+                            MediaViewerActivity.createIntent(
+                                context = this,
+                                items = items,
+                                index = index,
+                                hideControls = hideControls,
+                            ),
                         )
                     },
                 )

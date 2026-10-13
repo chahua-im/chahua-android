@@ -135,9 +135,15 @@ class MediaViewerActivity : ComponentActivity() {
         private const val EXTRA_URL = "media_url"
         private const val EXTRA_KIND = "media_kind"
         private const val EXTRA_FILE_NAME = "media_file_name"
+        private const val EXTRA_HIDE_CONTROLS = "media_hide_controls"
 
         /** 打开一组媒体（同一消息的多张图），并从 [index] 开始浏览。 */
-        fun createIntent(context: Context, items: List<MediaViewerItem>, index: Int): Intent =
+        fun createIntent(
+            context: Context,
+            items: List<MediaViewerItem>,
+            index: Int,
+            hideControls: Boolean = false,
+        ): Intent =
             Intent(context, MediaViewerActivity::class.java)
                 .putExtra(
                     EXTRA_ITEMS,
@@ -147,6 +153,7 @@ class MediaViewerActivity : ComponentActivity() {
                     ),
                 )
                 .putExtra(EXTRA_INDEX, index)
+                .putExtra(EXTRA_HIDE_CONTROLS, hideControls)
 
         /** 打开单个媒体（视频 / 群资料附件等，无滑动切换）。 */
         fun createIntent(context: Context, url: String, kind: String, fileName: String? = null): Intent =
@@ -187,11 +194,14 @@ class MediaViewerActivity : ComponentActivity() {
             )
         }
         val initialIndex = intent.getIntExtra(EXTRA_INDEX, 0).coerceIn(0, items.lastIndex)
+        // 从聊天里的视频直接进来时：不显示控件，直接全屏播放。
+        val hideControls = intent.getBooleanExtra(EXTRA_HIDE_CONTROLS, false)
         setContent {
             ChahuaTheme {
                 MediaViewerScreen(
                     items = items,
                     initialIndex = initialIndex,
+                    hideControls = hideControls,
                     onBack = { finish() },
                 )
             }
@@ -204,6 +214,7 @@ private fun MediaViewerScreen(
     items: List<MediaViewerItem>,
     initialIndex: Int,
     onBack: () -> Unit,
+    hideControls: Boolean = false,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -271,6 +282,7 @@ private fun MediaViewerScreen(
                     onBack = onBack,
                     onSave = ::requestSave,
                     saving = saving,
+                    hideControlsInitially = hideControls,
                 )
             } else {
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -312,6 +324,7 @@ private fun ExoVideoPlayer(
     onBack: () -> Unit,
     onSave: () -> Unit,
     saving: Boolean,
+    hideControlsInitially: Boolean = false,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = context as? LifecycleOwner
@@ -340,7 +353,7 @@ private fun ExoVideoPlayer(
         }
     }
 
-    var controlsVisible by remember { mutableStateOf(true) }
+    var controlsVisible by remember { mutableStateOf(!hideControlsInitially) }
     var isPlaying by remember { mutableStateOf(false) }
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }

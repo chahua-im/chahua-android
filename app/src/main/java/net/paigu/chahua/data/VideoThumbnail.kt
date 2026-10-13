@@ -3,16 +3,24 @@ package net.paigu.chahua.data
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/** 封面 + 时长（时长取自 [MediaMetadataRetriever]，随封面一起落盘）。 */
+data class VideoPoster(
+    val bitmap: Bitmap?,
+    val durationMs: Long,
+)
+
 /**
  * 视频封面：用 [MediaMetadataRetriever] 抽第一帧，结果按 URL 落盘复用。
  *
  * 取帧的数据来自 [VideoCache.mediaDataSource]（优先命中缓存，缺失的按需下载并写回缓存），
- * 所以不会为了缩略图把整段视频重新下载一遍。
+ * 只会读取解码所需的片段，不会为了缩略图把整段视频重新下载一遍。
  */
 object VideoThumbnail {
 
@@ -30,16 +38,33 @@ object VideoThumbnail {
     private fun cacheFile(context: Context, url: String): File =
         File(cacheDir(context), "${url.hashCode().toUInt().toString(16)}.jpg")
 
-    /** 取封面：磁盘命中直接返回，否则抽帧、缩放、写盘。 */
-    suspend fun load(context: Context, url: String, sizeHint: Long = 0L): Bitmap? =
+    private fun durationFile(context: Context, url: String): File =
+        File(cacheDir(context), "${url.hashCode().toUInt().toString(16)}.dur")
+
+    /** 读封面：内存/磁盘命中直接返回，否则抽帧、缩放、写盘（同时记录时长）。 */
+    suspend fun load(context: Context, url: String, sizeHint: Long = 0L): VideoPoster? =
         withContext(Dispatchers.IO) {
             if (url.isBlank()) return@withContext null
             val file = cacheFile(context, url)
+            val durationFile = durationFile(context, url)
             if (file.exists()) {
                 file.setLastModified(System.currentTimeMillis())
-                decode(file)?.let { return@withContext it }
+                val bitmap = decode(file)
+                val duration = durationFile.takeIf { it.exists() }
+                    ?.let { runCatching { it.readText().trim().toLong() }.getOrNull() }
+                    ?: 0L
+                if (bitmap != null || duration > 0) return@withContext VideoPoster(bitmap, duration)
             }
-            val frame = extractFrame(url, sizeHint) ?: return@withContext null
+            val extracted = extract(url, sizeHint) ?: return@withContext null
+            val frame = extracted.first
+            val durationMs = extracted.second
+            if (durationMs > 0) {
+                runCatching {
+                    file.parentFile?.mkdirs()
+                    durationFile.writeText(durationMs.toString())
+                }
+            }
+            if (frame == null) return@withContext VideoPoster(null, durationMs)
             val scaled = scale(frame)
             if (scaled !== frame) frame.recycle()
             runCatching {
@@ -49,25 +74,51 @@ object VideoThumbnail {
                 }
                 trimCache(file.parentFile)
             }
-            scaled
+            VideoPoster(scaled, durationMs)
         }
 
-    /** 删除某个视频的封面（视频缓存被清理时一并调用）。 */
+    /** 删除某个视频的封面与时长记录（视频缓存被清理时一并调用）。 */
     fun evict(context: Context, url: String) {
         runCatching { cacheFile(context, url).delete() }
+        runCatching { durationFile(context, url).delete() }
     }
 
-    private fun extractFrame(url: String, sizeHint: Long): Bitmap? = runCatching {
+    /** 抽第一帧（关键帧）并读取时长；失败返回 null。 */
+    private fun extract(url: String, sizeHint: Long): Pair<Bitmap?, Long>? = runCatching {
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(VideoCache.mediaDataSource(url, sizeHint))
-            // 优先第一帧（关键帧），拿不到再退回系统给的任意一帧。
-            retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            val frame = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                 ?: retriever.frameAtTime
+            var duration = retriever
+                .extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull() ?: 0L
+            if (duration <= 0) duration = extractDurationUs(url, sizeHint) / 1000
+            frame to duration
         } finally {
             runCatching { retriever.release() }
         }
     }.getOrNull()
+
+    /** MediaMetadataRetriever 拿不到时长时，退回 MediaExtractor 读轨道时长（微秒）。 */
+    private fun extractDurationUs(url: String, sizeHint: Long): Long = runCatching {
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(VideoCache.mediaDataSource(url, sizeHint))
+            (0 until extractor.trackCount)
+                .mapNotNull { index ->
+                    val format = extractor.getTrackFormat(index)
+                    if (format.containsKey(MediaFormat.KEY_DURATION)) {
+                        format.getLong(MediaFormat.KEY_DURATION)
+                    } else {
+                        null
+                    }
+                }
+                .maxOrNull() ?: 0L
+        } finally {
+            runCatching { extractor.release() }
+        }
+    }.getOrDefault(0L)
 
     private fun decode(file: File): Bitmap? = runCatching {
         BitmapFactory.decodeFile(file.absolutePath)
