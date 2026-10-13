@@ -226,7 +226,8 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    private fun refreshPendingCount() {
+    /** 刷新待处理好友请求数（好友标签红点用；失败静默）。 */
+    fun refreshPendingCount() {
         viewModelScope.launch {
             runCatching { api.pendingFriendRequestCount() }
                 .onSuccess { _pendingCount.value = it.pendingIncomingCount }
