@@ -3,6 +3,7 @@ package net.paigu.chahua.ui.splash
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -30,6 +31,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import net.paigu.chahua.R
@@ -44,6 +46,16 @@ import net.paigu.chahua.ui.theme.GreenLight
 import net.paigu.chahua.ui.theme.Typography
 import java.nio.ByteBuffer
 import java.util.Base64
+import kotlinx.coroutines.launch
+
+/**
+ * 进程级启动状态：开屏动画播放过一次后，只要进程还活着（例如用户按返回键退出、
+ * 但应用仍驻留后台），再次启动就直接进目标页，不再重播开屏。
+ */
+private object StartupState {
+    @Volatile
+    var splashPlayed: Boolean = false
+}
 
 /** 启动页：播放入场动画后，按会话状态进入主界面或登录页。 */
 class SplashActivity : ComponentActivity() {
@@ -54,6 +66,12 @@ class SplashActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 进程仍存活（例如按返回键退出后又从桌面点进来）时跳过开屏，直接进目标页，
+        // 少一层画面切换，启动更连贯。
+        if (StartupState.splashPlayed) {
+            lifecycleScope.launch { navigateToNext() }
+            return
+        }
         enableEdgeToEdge()
         setContent {
             ChahuaTheme {
@@ -63,6 +81,7 @@ class SplashActivity : ComponentActivity() {
     }
 
     private suspend fun navigateToNext() {
+        StartupState.splashPlayed = true
         val hasSession = AppGraph.session.current().hasSession
         val permalink = parsePermalink(intent)
         if (hasSession && permalink != null) {
@@ -70,7 +89,7 @@ class SplashActivity : ComponentActivity() {
             val threadId = runCatching {
                 AppGraph.api.message(chatId, messageId)
             }.getOrNull()?.replyRootId
-            startActivity(
+            startWithoutTransition(
                 Intent(this, ChatActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
                     .putExtra("chat_id", chatId)
@@ -83,12 +102,24 @@ class SplashActivity : ComponentActivity() {
             return
         }
         val target = if (hasSession) MainActivity::class.java else AuthActivity::class.java
-        startActivity(
+        startWithoutTransition(
             Intent(this, target).addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK,
             ),
         )
         finish()
+    }
+
+    /** 启动目标页并关掉系统默认的页面切换动效：直接切过去，不要滑入/缩放。 */
+    private fun startWithoutTransition(intent: Intent) {
+        startActivity(intent)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            overrideActivityTransition(OVERRIDE_TRANSITION_OPEN, 0, 0)
+            overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, 0)
+        } else {
+            @Suppress("DEPRECATION")
+            overridePendingTransition(0, 0)
+        }
     }
 
     /** 解析 /m/{base64url(chatId|messageId)} 格式的消息链接。 */
