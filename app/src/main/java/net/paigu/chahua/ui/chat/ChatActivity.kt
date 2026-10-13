@@ -128,9 +128,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -148,6 +152,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.TextRange
@@ -202,6 +207,7 @@ import java.time.Instant
 import java.util.Base64
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /** 一次可选择的照片/视频数量上限。 */
@@ -380,6 +386,10 @@ internal fun ChatScreen(
     var cameraPhotoUri by remember { mutableStateOf<Uri?>(null) }
     var cameraVideoUri by remember { mutableStateOf<Uri?>(null) }
     val keyboard = LocalSoftwareKeyboardController.current
+    val windowInfo = LocalWindowInfo.current
+    val composerFocusRequester = remember { FocusRequester() }
+    /** 自增该值即表示“让输入框重新获得焦点并弹出键盘”。 */
+    var composerFocusSignal by remember { mutableIntStateOf(0) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var restoreScrollKey by remember { mutableStateOf<String?>(null) }
@@ -387,6 +397,22 @@ internal fun ChatScreen(
     var voiceFile by remember { mutableStateOf<File?>(null) }
     var voiceDurationMs by remember { mutableStateOf(0L) }
     val voiceRecorderRef = remember { VoiceRecorderRef() }
+
+    /** 输入框获得焦点并自动弹出键盘：引用消息、@提及等操作后调用。 */
+    fun focusComposer() {
+        showEmojiPanel = false
+        composerFocusSignal++
+    }
+
+    LaunchedEffect(composerFocusSignal) {
+        if (composerFocusSignal == 0) return@LaunchedEffect
+        // 长按消息的操作浮层会抢占窗口焦点，需等它关闭后再聚焦，否则键盘不会弹出。
+        snapshotFlow { windowInfo.isWindowFocused }.first { it }
+        runCatching { composerFocusRequester.requestFocus() }
+        // 等一帧让输入会话建立后再请求 IME，避免键盘被忽略。
+        withFrameNanos { }
+        keyboard?.show()
+    }
 
     LaunchedEffect(profileUser) {
         val user = profileUser
@@ -600,8 +626,7 @@ internal fun ChatScreen(
             text = newText,
             selection = TextRange(cursor),
         )
-        showEmojiPanel = false
-        keyboard?.show()
+        focusComposer()
     }
 
     val nearBottom by remember {
@@ -823,6 +848,7 @@ internal fun ChatScreen(
                         candidates = mentionCandidates,
                         onSelect = { user ->
                             input = replaceMentionToken(input, user.uid)
+                            focusComposer()
                         },
                     )
                 }
@@ -917,6 +943,7 @@ internal fun ChatScreen(
                             onValueChange = { input = it },
                             modifier = Modifier
                                 .weight(1f)
+                                .focusRequester(composerFocusRequester)
                                 .onPreviewKeyEvent { event ->
                                     if (
                                         enterToSend &&
@@ -1133,7 +1160,10 @@ internal fun ChatScreen(
                                     }
                                 },
                                 onOpenSticker = { stickerId -> stickerPreviewId = stickerId },
-                                onReply = { viewModel.setReplyTarget(item.message) },
+                                onReply = {
+                                    viewModel.setReplyTarget(item.message)
+                                    focusComposer()
+                                },
                                 onOpenReply = {
                                     item.message.replyToMessage?.id?.let(viewModel::jumpToMessage)
                                 },
