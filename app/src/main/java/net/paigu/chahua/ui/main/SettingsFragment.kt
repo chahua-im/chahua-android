@@ -305,6 +305,7 @@ private fun SettingsScreen(
             replyWithMention = settings.replyWithMention,
             tapTitleToScrollTop = settings.tapTitleToScrollTop,
             plusOneEnabled = settings.plusOneEnabled,
+            videoPrecacheEnabled = settings.videoPrecacheEnabled,
             updateState = updateState,
             onCheckForUpdates = viewModel::checkForUpdates,
             onDismissUpdateDialog = viewModel::dismissUpdateDialog,
@@ -317,6 +318,7 @@ private fun SettingsScreen(
             onReplyWithMentionChange = viewModel::setReplyWithMention,
             onTapTitleToScrollTopChange = viewModel::setTapTitleToScrollTop,
             onPlusOneEnabledChange = viewModel::setPlusOneEnabled,
+            onVideoPrecacheEnabledChange = viewModel::setVideoPrecacheEnabled,
         )
         SettingsPage.SAVED_MESSAGES -> SavedMessagesScreen(
             viewModel = savedMessagesViewModel,

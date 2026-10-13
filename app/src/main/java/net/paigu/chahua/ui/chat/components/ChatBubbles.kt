@@ -349,54 +349,22 @@ internal fun MessageBubble(
                                 )
                             }
                             attachment.kind.startsWith("video") -> {
-                                Box(
-                                    modifier = Modifier
-                                        .size(width = 200.dp, height = 120.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                                        .combinedClickable(
-                                            onClick = {
-                                                onOpenMedia(
-                                                    listOf(
-                                                        MediaViewerItem(
-                                                            attachment.url,
-                                                            "video",
-                                                            attachment.fileName,
-                                                        ),
-                                                    ),
-                                                    0,
-                                                )
-                                            },
-                                            onLongClick = { menuExpanded = true },
-                                        ),
-                                ) {
-                                    if (attachment.fileName.isNotBlank()) {
-                                        Text(
-                                            text = attachment.fileName,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier
-                                                .align(Alignment.BottomStart)
-                                                .padding(8.dp),
+                                VideoAttachmentBubble(
+                                    attachment = attachment,
+                                    onOpenViewer = {
+                                        onOpenMedia(
+                                            listOf(
+                                                MediaViewerItem(
+                                                    attachment.url,
+                                                    "video",
+                                                    attachment.fileName,
+                                                ),
+                                            ),
+                                            0,
                                         )
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .clip(CircleShape)
-                                            .background(Color.Black.copy(alpha = 0.5f))
-                                            .align(Alignment.Center),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.PlayArrow,
-                                            contentDescription = stringResource(R.string.chat_play),
-                                            tint = Color.White,
-                                        )
-                                    }
-                                }
+                                    },
+                                    onLongClick = { menuExpanded = true },
+                                )
                             }
                             else -> {
                                 Row(

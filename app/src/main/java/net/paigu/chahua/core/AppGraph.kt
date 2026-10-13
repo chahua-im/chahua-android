@@ -26,6 +26,7 @@ import net.paigu.chahua.data.SettingsManager
 import net.paigu.chahua.data.StickerPrecache
 import net.paigu.chahua.data.SyncManager
 import net.paigu.chahua.data.UserAgentInterceptor
+import net.paigu.chahua.data.VideoCache
 import net.paigu.chahua.service.ChatMessagingService
 import net.paigu.chahua.R
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -82,6 +83,15 @@ object AppGraph {
         engine.onConnected = { scope.launch { syncManager.syncAll() } }
         imageLoader = buildImageLoader(application, session)
         stickerPrecache = StickerPrecache(application, api, session, imageLoader)
+        // 视频缓存：预缓存与播放共用；只有服务端同源地址才带鉴权头。
+        VideoCache.init(
+            context = application,
+            userAgent = application.getString(R.string.x_user_agent),
+        ) { url ->
+            val apiHost = session.snapshot().serverUrl.toHttpUrlOrNull()?.host
+            val host = url.toHttpUrlOrNull()?.host
+            if (apiHost != null && host == apiHost) session.authHeaders() else emptyMap()
+        }
     }
 
     /** 启动后台消息 Service（前台服务，负责 WebSocket 收发与推送通知）。 */

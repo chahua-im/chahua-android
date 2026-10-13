@@ -106,6 +106,7 @@ import net.paigu.chahua.R
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.data.AppLocale
 import net.paigu.chahua.data.ApiJson
+import net.paigu.chahua.data.VideoCache
 import net.paigu.chahua.ui.common.AuthAsyncImage
 import net.paigu.chahua.ui.theme.ChahuaTheme
 import java.util.Locale
@@ -315,12 +316,16 @@ private fun ExoVideoPlayer(
     val context = LocalContext.current
     val lifecycleOwner = context as? LifecycleOwner
     val exoPlayer = remember {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(url))
-            repeatMode = Player.REPEAT_MODE_ONE
-            prepare()
-            playWhenReady = true
-        }
+        ExoPlayer.Builder(context)
+            // 走视频缓存：已缓存的直接本地播放，未缓存的边播边写。
+            .setMediaSourceFactory(VideoCache.mediaSourceFactory(url))
+            .build()
+            .apply {
+                setMediaItem(MediaItem.fromUri(url))
+                repeatMode = Player.REPEAT_MODE_ONE
+                prepare()
+                playWhenReady = true
+            }
     }
     DisposableEffect(exoPlayer, lifecycleOwner) {
         val observer = object : DefaultLifecycleObserver {
