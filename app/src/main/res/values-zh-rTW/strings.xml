@@ -71,6 +71,8 @@
     <string name="settings_reply_with_mention">回覆時自動 @ 對方</string>
     <string name="settings_reply_with_mention_desc">回覆訊息（右滑或選單選取）時自動在輸入框插入對方的 @提及；回覆自己的訊息時不插入。</string>
     <string name="settings_tap_title_scroll_top">點擊標題欄回到頂部</string>
+    <string name="settings_plus_one">長按選單顯示「＋1」</string>
+    <string name="settings_plus_one_desc">開啟後，長按訊息的選單裡會多出「＋1」：點一下就把這則訊息的內容用自己的帳號再傳一次。</string>
     <string name="settings_tap_title_scroll_top_desc">點擊聊天頁標題欄快速捲到已載入訊息的頂部。</string>
     <string name="settings_cache_total">占用空間</string>
     <string name="settings_cache_images">圖片快取</string>

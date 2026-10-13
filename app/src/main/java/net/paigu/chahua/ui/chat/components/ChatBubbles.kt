@@ -139,6 +139,7 @@ internal fun MessageBubble(
     val context = LocalContext.current
     val fontScale = FontSizeOption.from(LocalAppSettings.current.fontSizeKey).scale
     val showUidInChat = LocalAppSettings.current.showUidInChat
+    val plusOneEnabled = LocalAppSettings.current.plusOneEnabled
     val messageStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = (16 * fontScale).sp)
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
@@ -454,8 +455,8 @@ internal fun MessageBubble(
                                 onOpenEmojiPicker()
                             },
                             actions = buildList {
-                                // 「＋1」：把这条消息的内容用自己的账号再发一遍。
-                                if (!message.message.isNullOrBlank()) {
+                                // 「＋1」：把这条消息的内容用自己的账号再发一遍（设置里默认关闭）。
+                                if (plusOneEnabled && !message.message.isNullOrBlank()) {
                                     add(
                                         MessageActionItem(
                                             label = stringResource(R.string.chat_plus_one),

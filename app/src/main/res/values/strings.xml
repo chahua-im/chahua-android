@@ -73,6 +73,8 @@
     <string name="settings_reply_with_mention">Mention the sender when replying</string>
     <string name="settings_reply_with_mention_desc">When replying (swipe or menu), insert an @mention of the sender into the input box. Replying to your own message inserts nothing.</string>
     <string name="settings_tap_title_scroll_top">Tap the title bar to scroll to top</string>
+    <string name="settings_plus_one">Show “+1” in the message menu</string>
+    <string name="settings_plus_one_desc">When on, the long-press menu gains “+1”: tap it to send the selected message’s content again as your own message.</string>
     <string name="settings_tap_title_scroll_top_desc">Tap the chat title bar to quickly scroll to the top of the loaded messages.</string>
     <string name="settings_cache_total">Storage used</string>
     <string name="settings_cache_images">Image cache</string>

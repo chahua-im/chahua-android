@@ -72,6 +72,8 @@
     <string name="settings_reply_with_mention_desc">回复消息（右滑或菜单选择）时自动在输入框插入对方的 @提及；回复自己的消息时不插入。</string>
     <string name="settings_tap_title_scroll_top">点击标题栏回到顶部</string>
     <string name="settings_tap_title_scroll_top_desc">点击聊天页标题栏快速滚到已加载消息的顶部。</string>
+    <string name="settings_plus_one">长按菜单显示「＋1」</string>
+    <string name="settings_plus_one_desc">开启后，长按消息的菜单里会多出「＋1」：点一下就把这条消息的内容用自己的账号再发一遍。</string>
     <string name="settings_cache_total">占用空间</string>
     <string name="settings_cache_images">图片缓存</string>
     <string name="settings_cache_other">其他缓存</string>

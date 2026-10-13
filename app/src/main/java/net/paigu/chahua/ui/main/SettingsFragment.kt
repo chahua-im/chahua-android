@@ -304,6 +304,7 @@ private fun SettingsScreen(
             showAvatarsInMessages = settings.showAvatarsInMessages,
             replyWithMention = settings.replyWithMention,
             tapTitleToScrollTop = settings.tapTitleToScrollTop,
+            plusOneEnabled = settings.plusOneEnabled,
             updateState = updateState,
             onCheckForUpdates = viewModel::checkForUpdates,
             onDismissUpdateDialog = viewModel::dismissUpdateDialog,
@@ -315,6 +316,7 @@ private fun SettingsScreen(
             onShowAvatarsInMessagesChange = viewModel::setShowAvatarsInMessages,
             onReplyWithMentionChange = viewModel::setReplyWithMention,
             onTapTitleToScrollTopChange = viewModel::setTapTitleToScrollTop,
+            onPlusOneEnabledChange = viewModel::setPlusOneEnabled,
         )
         SettingsPage.SAVED_MESSAGES -> SavedMessagesScreen(
             viewModel = savedMessagesViewModel,
