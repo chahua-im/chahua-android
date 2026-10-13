@@ -32,6 +32,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -151,6 +152,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
@@ -386,6 +388,7 @@ internal fun ChatScreen(
     var cameraPhotoUri by remember { mutableStateOf<Uri?>(null) }
     var cameraVideoUri by remember { mutableStateOf<Uri?>(null) }
     val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
     val windowInfo = LocalWindowInfo.current
     val composerFocusRequester = remember { FocusRequester() }
     /** 自增该值即表示“让输入框重新获得焦点并弹出键盘”。 */
@@ -1053,7 +1056,18 @@ internal fun ChatScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
+                .padding(padding)
+                // 点击消息区空白处：取消输入框聚焦、收起键盘与表情面板
+                // （消息气泡/图片等自身消费点击的子项不受影响）。
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = {
+                            focusManager.clearFocus()
+                            keyboard?.hide()
+                            showEmojiPanel = false
+                        },
+                    )
+                },
         ) {
             if (uiState.loading && messages.isEmpty()) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
