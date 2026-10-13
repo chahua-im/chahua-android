@@ -143,10 +143,12 @@ fun ChatListScreen(
     val threads by viewModel.threads.collectAsState()
     val groupChats = chats.filterNot { it.isDm }
     val dmChatsForUnread = chats.filter { it.isDm }
-    val hasGroupUnread = groupChats.any { it.unreadCount > 0 }
-    val hasDmUnread = dmChatsForUnread.any { it.unreadCount > 0 }
-    val hasThreadUnread = threads.any { it.unreadCount > 0 }
-    val hasAnyUnread = hasGroupUnread || hasDmUnread || hasThreadUnread
+    // 标签角标显示未读消息条数：全部 = 群聊 + 私聊 + 话题（话题被隐藏时不计）。
+    val groupUnread = groupChats.sumOf { it.unreadCount }
+    val dmUnread = dmChatsForUnread.sumOf { it.unreadCount }
+    val threadUnread = threads.sumOf { it.unreadCount }
+    val allUnread = groupUnread + dmUnread +
+        if (settings.hideThreadsInAllTab) 0L else threadUnread
     val archivedChats by viewModel.archivedChats.collectAsState()
     val archivedThreads by viewModel.archivedThreads.collectAsState()
     val loading by viewModel.loading.collectAsState()
@@ -252,12 +254,15 @@ fun ChatListScreen(
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             SecondaryTabRow(selectedTabIndex = safeIndex) {
                 tabs.forEachIndexed { index, item ->
-                    val showDot = when (item) {
-                        ChatTab.ALL -> hasAnyUnread
-                        ChatTab.GROUP -> hasGroupUnread
-                        ChatTab.THREADS -> hasThreadUnread
-                        ChatTab.FRIENDS -> hasDmUnread || pendingFriendRequestCount > 0
+                    val unread = when (item) {
+                        ChatTab.ALL -> allUnread
+                        ChatTab.GROUP -> groupUnread
+                        ChatTab.THREADS -> threadUnread
+                        ChatTab.FRIENDS -> dmUnread
                     }
+                    // 没有未读消息但有新的好友请求时，好友标签仍给一个红点。
+                    val friendRequestOnly = item == ChatTab.FRIENDS &&
+                        unread == 0L && pendingFriendRequestCount > 0
                     Tab(
                         selected = safeIndex == index,
                         onClick = { tabIndex = index },
@@ -267,7 +272,15 @@ fun ChatListScreen(
                                     text = stringResource(item.titleRes),
                                     modifier = Modifier.padding(horizontal = 2.dp),
                                 )
-                                if (showDot) {
+                                if (unread > 0) {
+                                    Badge(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .offset(x = 12.dp, y = (-9).dp),
+                                    ) {
+                                        Text(if (unread > 99) "99+" else unread.toString())
+                                    }
+                                } else if (friendRequestOnly) {
                                     Box(
                                         modifier = Modifier
                                             .align(Alignment.TopEnd)
