@@ -127,6 +127,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -177,6 +178,7 @@ import net.paigu.chahua.R
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.data.AppLocale
 import net.paigu.chahua.data.FontSizeOption
+import net.paigu.chahua.data.VideoCache
 import net.paigu.chahua.data.models.StickerSummaryDto
 import net.paigu.chahua.ui.common.AuthAsyncImage
 import net.paigu.chahua.ui.common.UserAvatar
@@ -210,11 +212,15 @@ import java.time.Instant
 import java.util.Base64
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /** 一次可选择的照片/视频数量上限。 */
 private const val MAX_PICKED_ATTACHMENTS = 10
+
+/** 视频消息在屏幕上停留多久后开始预缓存。 */
+private const val VIDEO_PRECACHE_DWELL_MS = 1_300L
 
 class ChatActivity : ComponentActivity() {
 
@@ -304,8 +310,15 @@ class ChatActivity : ComponentActivity() {
                         )
                     },
                     onOpenMedia = { items, index ->
+                        // 视频：直接全屏播放，不先弹查看器控件。
+                        val hideControls = items.getOrNull(index)?.kind?.startsWith("video") == true
                         startActivity(
-                            MediaViewerActivity.createIntent(this, items, index),
+                            MediaViewerActivity.createIntent(
+                                context = this,
+                                items = items,
+                                index = index,
+                                hideControls = hideControls,
+                            ),
                         )
                     },
                 )
@@ -327,7 +340,7 @@ class ChatActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, kotlinx.coroutines.FlowPreview::class)
 @Composable
 internal fun ChatScreen(
     viewModel: ChatViewModel,
@@ -691,6 +704,27 @@ internal fun ChatScreen(
     }
     LaunchedEffect(needOlder) {
         if (needOlder) viewModel.loadOlder()
+    }
+    // 视频预缓存：停留在包含视频的消息上约 1.3 秒（期间画面不再变化）后自动开始缓存；
+    // 快速滑过不会触发，设置里可整体关闭以省流量。
+    val currentMessages by rememberUpdatedState(messages)
+    val videoPrecacheEnabled = appSettings.videoPrecacheEnabled
+    LaunchedEffect(listState, videoPrecacheEnabled) {
+        if (!videoPrecacheEnabled) return@LaunchedEffect
+        snapshotFlow {
+            listState.layoutInfo.visibleItemsInfo
+                .mapNotNull { info ->
+                    (currentMessages.getOrNull(currentMessages.lastIndex - info.index)
+                        as? ChatItem.Server)?.message
+                }
+                .flatMap { message -> message.attachments.filter { it.kind.startsWith("video") } }
+                .map { it.url to it.size }
+                .distinct()
+        }
+            .debounce(VIDEO_PRECACHE_DWELL_MS)
+            .collect { videos ->
+                videos.forEach { (url, size) -> VideoCache.preCache(url, size) }
+            }
     }
     LaunchedEffect(uiState.error) {
         uiState.error?.let {

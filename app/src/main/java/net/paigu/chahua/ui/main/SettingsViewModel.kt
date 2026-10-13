@@ -214,6 +214,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { AppGraph.settings.setPlusOneEnabled(enabled) }
     }
 
+    fun setVideoPrecacheEnabled(enabled: Boolean) {
+        viewModelScope.launch { AppGraph.settings.setVideoPrecacheEnabled(enabled) }
+    }
+
     fun setDeveloperEnabled(enabled: Boolean) {
         viewModelScope.launch { AppGraph.settings.setDeveloperEnabled(enabled) }
     }

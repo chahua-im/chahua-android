@@ -10,6 +10,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -43,6 +44,7 @@ import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.AlertDialog
@@ -74,6 +76,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -83,6 +88,7 @@ import androidx.compose.ui.unit.dp
 import net.paigu.chahua.R
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.data.AppLocale
+import net.paigu.chahua.data.VideoThumbnail
 import net.paigu.chahua.data.models.ChatAttachmentDto
 import net.paigu.chahua.data.models.MemberDto
 import net.paigu.chahua.data.models.MessageDto
@@ -712,6 +718,17 @@ private fun AttachmentThumb(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val isVideo = attachment.kind.startsWith("video")
+    var videoCover by remember(attachment.url) { mutableStateOf<ImageBitmap?>(null) }
+    // 视频：用 MediaMetadataRetriever 抽首帧当封面（数据走视频缓存，失败则退回图标）。
+    LaunchedEffect(attachment.url, isVideo) {
+        if (isVideo) {
+            videoCover = VideoThumbnail.load(context, attachment.url, attachment.size)
+                ?.bitmap
+                ?.asImageBitmap()
+        }
+    }
     Box(
         modifier = modifier
             .aspectRatio(1f)
@@ -720,20 +737,45 @@ private fun AttachmentThumb(
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        if (attachment.kind.startsWith("image")) {
-            AuthAsyncImage(
-                url = attachment.url,
-                contentDescription = attachment.fileName,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-        } else {
-            Icon(
-                Icons.Filled.VideoLibrary,
-                contentDescription = attachment.fileName,
-                modifier = Modifier.size(32.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        when {
+            attachment.kind.startsWith("image") -> {
+                AuthAsyncImage(
+                    url = attachment.url,
+                    contentDescription = attachment.fileName,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            }
+            videoCover != null -> {
+                Image(
+                    bitmap = videoCover!!,
+                    contentDescription = attachment.fileName,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.PlayArrow,
+                        contentDescription = stringResource(R.string.chat_play),
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+            else -> {
+                Icon(
+                    Icons.Filled.VideoLibrary,
+                    contentDescription = attachment.fileName,
+                    modifier = Modifier.size(32.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

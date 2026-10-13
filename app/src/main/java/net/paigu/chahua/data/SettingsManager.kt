@@ -91,6 +91,8 @@ data class AppSettings(
     val tapTitleToScrollTop: Boolean = true,
     /** 长按菜单里的「＋1」（把该条消息内容用自己的账号再发一遍）。 */
     val plusOneEnabled: Boolean = false,
+    /** 进入聊天后自动预缓存停留查看的视频（关闭可省流量）。 */
+    val videoPrecacheEnabled: Boolean = true,
     val developerEnabled: Boolean = false,
     val showUidInChat: Boolean = false,
     val showLatency: Boolean = false,
@@ -128,6 +130,7 @@ class SettingsManager(context: Context) {
         val REPLY_WITH_MENTION = booleanPreferencesKey("reply_with_mention")
         val TAP_TITLE_SCROLL_TOP = booleanPreferencesKey("tap_title_scroll_top")
         val PLUS_ONE_ENABLED = booleanPreferencesKey("plus_one_enabled")
+        val VIDEO_PRECACHE_ENABLED = booleanPreferencesKey("video_precache_enabled")
         val DEVELOPER_ENABLED = booleanPreferencesKey("developer_enabled")
         val SHOW_UID_IN_CHAT = booleanPreferencesKey("show_uid_in_chat")
         val SHOW_LATENCY = booleanPreferencesKey("show_latency")
@@ -164,6 +167,7 @@ class SettingsManager(context: Context) {
             replyWithMention = p[Keys.REPLY_WITH_MENTION] ?: false,
             tapTitleToScrollTop = p[Keys.TAP_TITLE_SCROLL_TOP] ?: true,
             plusOneEnabled = p[Keys.PLUS_ONE_ENABLED] ?: false,
+            videoPrecacheEnabled = p[Keys.VIDEO_PRECACHE_ENABLED] ?: true,
             developerEnabled = p[Keys.DEVELOPER_ENABLED] ?: false,
             showUidInChat = p[Keys.SHOW_UID_IN_CHAT] ?: false,
             showLatency = p[Keys.SHOW_LATENCY] ?: false,
@@ -292,6 +296,11 @@ class SettingsManager(context: Context) {
     suspend fun setPlusOneEnabled(enabled: Boolean) {
         prefs.edit { it[Keys.PLUS_ONE_ENABLED] = enabled }
         snapshot = snapshot.copy(plusOneEnabled = enabled)
+    }
+
+    suspend fun setVideoPrecacheEnabled(enabled: Boolean) {
+        prefs.edit { it[Keys.VIDEO_PRECACHE_ENABLED] = enabled }
+        snapshot = snapshot.copy(videoPrecacheEnabled = enabled)
     }
 
     suspend fun setDeveloperEnabled(enabled: Boolean) {
