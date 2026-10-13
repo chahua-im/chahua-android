@@ -28,8 +28,10 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Decode Keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          printf '%s' "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.jks
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > release.jks
           test -s release.jks || { echo "::error::KEYSTORE_BASE64 is empty or not configured"; exit 1; }
 
       - name: Make gradlew executable
@@ -44,6 +46,9 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
+          set -euo pipefail
+          trap 'rm -f release.jks' EXIT
+
           SDK_DIR="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
           if [ -z "$SDK_DIR" ] || [ ! -d "$SDK_DIR/build-tools" ]; then
             echo "::error::Android SDK not found. Please install build-tools or add Android SDK setup step."
@@ -65,7 +70,16 @@ jobs:
             exit 1
           fi
 
+          # 版本号：优先 tag；否则用 run_number + 短 SHA，避免出现分支名
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF_NAME//\//-}"
+          else
+            VERSION="manual-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
+          fi
+          echo "Version: ${VERSION}"
+
           mkdir -p artifacts
+          N=0
           for APK in "${APKS[@]}"; do
             DIR=$(dirname "$APK")
             FNAME=$(basename "$APK")
@@ -88,20 +102,22 @@ jobs:
               exit 1
             }
 
+            # 规范化 ABI 名称（使用 Android 官方 ABI 标识）
             ABI="universal"
             case "$BASENAME" in
-              *arm64*|*arm64-v8a* ) ABI=armv8 ;;
-              *armeabi*|*armeabi-v7a* ) ABI=armv7 ;;
-              *x86_64* ) ABI=x64 ;;
-              *x86* ) ABI=x86 ;;
+              *arm64-v8a*|*arm64_v8a*|*arm64* )                ABI="arm64-v8a" ;;
+              *armeabi-v7a*|*armeabi_v7a*|*armeabi*|*armv7* )  ABI="armeabi-v7a" ;;
+              *x86_64*|*x86-64*|*x64* )                        ABI="x86_64" ;;
+              *x86* )                                          ABI="x86" ;;
             esac
 
-            VERSION=$(echo "${{ github.ref_name }}" | tr '/' '-')
-            if [ -z "$VERSION" ]; then
-              VERSION="manual-${{ github.run_id }}"
-            fi
-
             OUTNAME="chahua-release-${VERSION}-${ABI}.apk"
+            # 防止 universal（或其他同名）产物互相覆盖
+            if [ -e "artifacts/${OUTNAME}" ]; then
+              OUTNAME="chahua-release-${VERSION}-${ABI}-${N}.apk"
+            fi
+            N=$((N + 1))
+
             cp "$ALIGNED" "artifacts/${OUTNAME}"
           done
 
@@ -112,30 +128,35 @@ jobs:
         with:
           name: signed-apk-x86
           path: artifacts/*-x86.apk
+          if-no-files-found: ignore
 
-      - name: Upload x64 APK
+      - name: Upload x86_64 APK
         uses: actions/upload-artifact@v4
         with:
-          name: signed-apk-x64
-          path: artifacts/*-x64.apk
+          name: signed-apk-x86_64
+          path: artifacts/*-x86_64.apk
+          if-no-files-found: ignore
 
-      - name: Upload armv7 APK
+      - name: Upload armeabi-v7a APK
         uses: actions/upload-artifact@v4
         with:
-          name: signed-apk-armv7
-          path: artifacts/*-armv7.apk
+          name: signed-apk-armeabi-v7a
+          path: artifacts/*-armeabi-v7a.apk
+          if-no-files-found: ignore
 
-      - name: Upload armv8 APK
+      - name: Upload arm64-v8a APK
         uses: actions/upload-artifact@v4
         with:
-          name: signed-apk-armv8
-          path: artifacts/*-armv8.apk
+          name: signed-apk-arm64-v8a
+          path: artifacts/*-arm64-v8a.apk
+          if-no-files-found: ignore
 
       - name: Upload universal APK
         uses: actions/upload-artifact@v4
         with:
           name: signed-apk-universal
           path: artifacts/*-universal.apk
+          if-no-files-found: ignore
 
       - name: Create Release and Upload APKs
         if: startsWith(github.ref, 'refs/tags/')
@@ -144,3 +165,7 @@ jobs:
           files: artifacts/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cleanup keystore
+        if: always()
+        run: rm -f release.jks
