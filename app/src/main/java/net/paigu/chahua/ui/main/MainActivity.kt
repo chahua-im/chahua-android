@@ -113,9 +113,9 @@ class MainActivity : FragmentActivity() {
         }
 
         // 容器来自 XML，Activity 恢复时 FragmentManager 会自动还原 Fragment；
-        // 首次启动才手动提交初始 Fragment。
+        // 首次启动才手动提交初始 Fragment（不做转场动画，主界面直接出现）。
         if (savedInstanceState == null) {
-            showFragment(selectedTab)
+            showFragment(selectedTab, animate = false)
         }
         updateBottomBarVisibility()
 
@@ -157,14 +157,18 @@ class MainActivity : FragmentActivity() {
         updateBottomBarVisibility()
     }
 
-    private fun showFragment(tab: Int) {
+    private fun showFragment(tab: Int, animate: Boolean = true) {
         val fragment = if (tab == 0) ChatFragment() else SettingsFragment()
         supportFragmentManager
             .beginTransaction()
-            .setCustomAnimations(
-                R.anim.fragment_fade_in,
-                R.anim.fragment_fade_out,
-            )
+            .apply {
+                if (animate) {
+                    setCustomAnimations(
+                        R.anim.fragment_fade_in,
+                        R.anim.fragment_fade_out,
+                    )
+                }
+            }
             .replace(R.id.fragment_container, fragment)
             .commit()
     }
