@@ -1,6 +1,7 @@
 package net.paigu.chahua.ui.chat.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -35,6 +36,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -49,6 +53,7 @@ import androidx.media3.ui.PlayerView
 import net.paigu.chahua.R
 import net.paigu.chahua.data.VideoCache
 import net.paigu.chahua.data.VideoCacheState
+import net.paigu.chahua.data.VideoThumbnail
 import net.paigu.chahua.data.models.AttachmentDto
 import net.paigu.chahua.ui.main.formatBytes
 
@@ -67,14 +72,31 @@ internal fun VideoAttachmentBubble(
     modifier: Modifier = Modifier,
 ) {
     val url = attachment.url
+    val context = LocalContext.current
     val states by VideoCache.states.collectAsState()
     val initiallyCached = remember(url) { VideoCache.isCached(url) }
     val cacheState = states[url] ?: if (initiallyCached) VideoCacheState.Cached else VideoCacheState.Idle
     var previewing by remember(url) { mutableStateOf(false) }
-    val ratio = remember(attachment.width, attachment.height) {
+    var thumbnail by remember(url) { mutableStateOf<ImageBitmap?>(null) }
+
+    // 封面：已缓存/正在缓存时用 MediaMetadataRetriever 抽第一帧（数据走缓存，不额外下载整段视频）。
+    val shouldLoadThumbnail = cacheState is VideoCacheState.Cached || cacheState is VideoCacheState.Downloading
+    LaunchedEffect(url, shouldLoadThumbnail) {
+        if (thumbnail == null && shouldLoadThumbnail) {
+            thumbnail = VideoThumbnail.load(context, url, attachment.size)?.asImageBitmap()
+        }
+    }
+    val ratio = remember(attachment.width, attachment.height, thumbnail) {
         val w = attachment.width ?: 0
         val h = attachment.height ?: 0
-        if (w > 0 && h > 0) (w.toFloat() / h).coerceIn(0.6f, 1.9f) else 16f / 9f
+        when {
+            w > 0 && h > 0 -> (w.toFloat() / h).coerceIn(0.6f, 1.9f)
+            thumbnail != null -> {
+                val bitmap = thumbnail!!
+                (bitmap.width.toFloat() / bitmap.height).coerceIn(0.6f, 1.9f)
+            }
+            else -> 16f / 9f
+        }
     }
 
     if (previewing) {
@@ -96,6 +118,20 @@ internal fun VideoAttachmentBubble(
             .background(Color.Black.copy(alpha = 0.35f))
             .combinedClickable(onClick = onOpenViewer, onLongClick = onLongClick),
     ) {
+        thumbnail?.let { bitmap ->
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            // 压一层暗色，保证播放按钮与文件名在亮色画面上也清晰。
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.25f)),
+            )
+        }
         if (attachment.fileName.isNotBlank()) {
             Text(
                 text = attachment.fileName,

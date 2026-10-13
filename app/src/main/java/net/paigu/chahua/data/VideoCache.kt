@@ -1,6 +1,7 @@
 package net.paigu.chahua.data
 
 import android.content.Context
+import android.media.MediaDataSource
 import androidx.media3.common.C
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
@@ -149,6 +150,48 @@ object VideoCache {
                 .setCache(cache)
                 .setUpstreamDataSourceFactory(upstream),
         )
+    }
+
+    /**
+     * 给 [android.media.MediaMetadataRetriever] 用的随机读数据源：
+     * 优先读已缓存的部分，缺失的按需下载并写回缓存，不会重复下载整段视频。
+     *
+     * @param sizeHint 视频总大小（未知传 0）。
+     */
+    fun mediaDataSource(url: String, sizeHint: Long = 0L): MediaDataSource = object : MediaDataSource() {
+        override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
+            if (size <= 0) return 0
+            val source = dataSourceFor(url) ?: return -1
+            return try {
+                source.open(
+                    DataSpec.Builder()
+                        .setUri(url)
+                        .setPosition(position)
+                        .setLength(size.toLong())
+                        .build(),
+                )
+                var read = 0
+                while (read < size) {
+                    val n = source.read(buffer, offset + read, size - read)
+                    if (n == C.RESULT_END_OF_INPUT) break
+                    read += n
+                }
+                if (read == 0) -1 else read
+            } catch (e: Exception) {
+                -1
+            } finally {
+                runCatching { source.close() }
+            }
+        }
+
+        override fun getSize(): Long = if (sizeHint > 0) sizeHint else -1L
+
+        override fun close() = Unit
+    }
+
+    private fun dataSourceFor(url: String): DataSource? {
+        val cache = cache ?: return httpFactory(url).createDataSource()
+        return runCatching { cacheDataSource(url) }.getOrNull()
     }
 
     private fun cacheDataSource(url: String): CacheDataSource =
