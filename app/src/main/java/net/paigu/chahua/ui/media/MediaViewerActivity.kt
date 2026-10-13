@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -58,6 +59,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SliderState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -66,6 +68,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -217,27 +220,39 @@ private fun MediaViewerScreen(
     hideControls: Boolean = false,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var saving by remember { mutableStateOf(false) }
+    val savingUrls by MediaSaver.saving.collectAsState()
+    var showSaveScopeDialog by remember { mutableStateOf(false) }
     val pagerState = rememberPagerState(initialPage = initialIndex) { items.size }
 
+    fun currentItem(): MediaViewerItem? = items.getOrNull(pagerState.currentPage)
+
+    /** 交给应用级作用域执行：保存过程中退出界面 / Activity 也不会中断。 */
+    fun saveItems(requests: List<MediaViewerItem>) {
+        if (requests.isEmpty()) return
+        MediaSaver.saveToGalleryInBackground(
+            context = context,
+            requests = requests.map {
+                MediaSaveRequest(url = it.url, kind = it.kind, fileName = it.fileName)
+            },
+            onResult = { saved, failed, firstError ->
+                val message = when {
+                    failed == 0 && saved == 1 -> context.getString(R.string.media_saved)
+                    failed == 0 -> context.getString(R.string.media_saved_count, saved)
+                    saved == 0 -> context.getString(R.string.media_save_failed, firstError.orEmpty())
+                    else -> context.getString(R.string.media_saved_partial, saved, failed)
+                }
+                Toast.makeText(context.applicationContext, message, Toast.LENGTH_SHORT).show()
+            },
+        )
+    }
+
     fun performSave() {
-        if (saving) return
-        val item = items[pagerState.currentPage.coerceIn(0, items.lastIndex)]
-        scope.launch {
-            saving = true
-            try {
-                MediaSaver.downloadToGallery(context, item.url, item.kind, item.fileName)
-                Toast.makeText(context, R.string.media_saved, Toast.LENGTH_SHORT).show()
-            } catch (e: Exception) {
-                Toast.makeText(
-                    context,
-                    context.getString(R.string.media_save_failed, e.message),
-                    Toast.LENGTH_SHORT,
-                ).show()
-            } finally {
-                saving = false
-            }
+        val item = currentItem() ?: return
+        // 这条消息里有多个图片/视频时，先问是只存当前还是全部存。
+        if (items.size > 1) {
+            showSaveScopeDialog = true
+        } else {
+            saveItems(listOf(item))
         }
     }
 
@@ -276,6 +291,7 @@ private fun MediaViewerScreen(
             modifier = Modifier.fillMaxSize(),
         ) { page ->
             val item = items[page]
+            val saving = item.url in savingUrls
             if (item.kind.startsWith("video")) {
                 ExoVideoPlayer(
                     url = item.url,
@@ -314,6 +330,35 @@ private fun MediaViewerScreen(
                     .padding(horizontal = 12.dp, vertical = 4.dp),
             )
         }
+    }
+
+    // 一条消息里有多张图片/视频时，保存前先问范围。
+    if (showSaveScopeDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveScopeDialog = false },
+            title = { Text(stringResource(R.string.media_save_scope_title)) },
+            text = { Text(stringResource(R.string.media_save_scope_message, items.size)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showSaveScopeDialog = false
+                        currentItem()?.let { saveItems(listOf(it)) }
+                    },
+                ) {
+                    Text(stringResource(R.string.media_save_current))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showSaveScopeDialog = false
+                        saveItems(items)
+                    },
+                ) {
+                    Text(stringResource(R.string.media_save_all, items.size))
+                }
+            },
+        )
     }
 }
 
