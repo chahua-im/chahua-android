@@ -8,6 +8,8 @@ import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 /** 封面 + 时长（时长取自 [MediaMetadataRetriever]，随封面一起落盘）。 */
@@ -32,6 +34,9 @@ object VideoThumbnail {
     /** 封面文件数量上限，超出后按最久未使用删除。 */
     private const val MAX_FILES = 300
 
+    /** 抽帧并发上限：群资料里一屏可能有多个视频，避免同时起太多解码器。 */
+    private val semaphore = Semaphore(2)
+
     private fun cacheDir(context: Context): File =
         File(context.cacheDir, "video_thumbs")
 
@@ -55,7 +60,8 @@ object VideoThumbnail {
                     ?: 0L
                 if (bitmap != null || duration > 0) return@withContext VideoPoster(bitmap, duration)
             }
-            val extracted = extract(url, sizeHint) ?: return@withContext null
+            val extracted = semaphore.withPermit { extract(url, sizeHint) }
+                ?: return@withContext null
             val frame = extracted.first
             val durationMs = extracted.second
             if (durationMs > 0) {
