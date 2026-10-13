@@ -91,6 +91,7 @@ import net.paigu.chahua.ui.chat.ReactionPill
 import net.paigu.chahua.ui.common.AuthAsyncImage
 import net.paigu.chahua.ui.common.UserAvatar
 import net.paigu.chahua.ui.common.formatTime
+import net.paigu.chahua.ui.common.markdown.rememberChatMarkdownText
 import net.paigu.chahua.ui.common.renderMentionsAsText
 import net.paigu.chahua.ui.media.MediaViewerItem
 import net.paigu.chahua.ui.theme.LocalAppSettings
@@ -280,7 +281,11 @@ internal fun MessageBubble(
                     }
                     if (!message.message.isNullOrBlank()) {
                         Text(
-                            text = renderMentionsAsText(message.message, message.mentions),
+                            text = rememberChatMarkdownText(
+                                message = message,
+                                baseStyle = messageStyle,
+                                mine = mine,
+                            ),
                             style = messageStyle,
                             color = if (mine) {
                                 MaterialTheme.colorScheme.onPrimaryContainer
