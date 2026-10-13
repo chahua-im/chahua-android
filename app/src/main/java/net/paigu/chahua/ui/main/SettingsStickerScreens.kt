@@ -190,23 +190,43 @@ internal fun StickerPacksScreen(
             )
         },
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            PinnedReactionsCard(
-                pinnedReactions = pinnedReactions,
-                onPinnedReactionsChange = onPinnedReactionsChange,
-            )
-            StickerPrecacheCard(
-                state = precacheState,
-                onPrecache = { stickersViewModel.precacheStickers() },
-            )
-            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                when {
-                    packsState.loading && packsState.packs.isEmpty() -> {
-                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+        // 上方的设置卡片与下方表情包列表放在同一个 LazyColumn 中，一起滚动。
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+            item(key = "pinned_reactions") {
+                PinnedReactionsCard(
+                    pinnedReactions = pinnedReactions,
+                    onPinnedReactionsChange = onPinnedReactionsChange,
+                )
+            }
+            item(key = "sticker_precache") {
+                StickerPrecacheCard(
+                    state = precacheState,
+                    onPrecache = { stickersViewModel.precacheStickers() },
+                )
+            }
+            when {
+                packsState.loading && packsState.packs.isEmpty() -> {
+                    item(key = "loading") {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 48.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator()
+                        }
                     }
-                    packsState.error != null && packsState.packs.isEmpty() -> {
+                }
+                packsState.error != null && packsState.packs.isEmpty() -> {
+                    item(key = "error") {
                         Column(
-                            modifier = Modifier.align(Alignment.Center),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 32.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Text(
@@ -218,30 +238,36 @@ internal fun StickerPacksScreen(
                             }
                         }
                     }
-                    packsState.packs.isEmpty() -> {
-                        Text(
-                            text = stringResource(R.string.settings_packs_empty),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.align(Alignment.Center),
-                        )
-                    }
-                    else -> {
-                        LazyColumn {
-                            items(packsState.packs, key = { it.id }) { pack ->
-                                StickerPackRow(
-                                    pack = pack,
-                                    owned = pack.id in packsState.ownedIds,
-                                    onClick = { onOpenPack(pack.id) },
-                                    onMoveTop = {
-                                        stickersViewModel.movePackToTop(pack.id) { err ->
-                                            Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
-                                        }
-                                    },
-                                )
-                                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                            }
+                }
+                packsState.packs.isEmpty() -> {
+                    item(key = "empty") {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.settings_packs_empty),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
                         }
+                    }
+                }
+                else -> {
+                    items(packsState.packs, key = { it.id }) { pack ->
+                        StickerPackRow(
+                            pack = pack,
+                            owned = pack.id in packsState.ownedIds,
+                            onClick = { onOpenPack(pack.id) },
+                            onMoveTop = {
+                                stickersViewModel.movePackToTop(pack.id) { err ->
+                                    Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                     }
                 }
             }

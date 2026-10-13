@@ -70,6 +70,8 @@
     <string name="settings_enter_to_send">Press Enter to send</string>
     <string name="settings_show_avatars_in_messages">Show avatars next to all messages</string>
     <string name="settings_show_avatars_in_messages_desc">When off, consecutive messages from the same sender show an avatar only on the last message.</string>
+    <string name="settings_reply_with_mention">Mention the sender when replying</string>
+    <string name="settings_reply_with_mention_desc">When replying (swipe or menu), insert an @mention of the sender into the input box. Replying to your own message inserts nothing.</string>
     <string name="settings_cache_total">Storage used</string>
     <string name="settings_cache_images">Image cache</string>
     <string name="settings_cache_other">Other cache</string>

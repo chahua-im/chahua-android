@@ -302,6 +302,7 @@ private fun SettingsScreen(
             currentLanguage = AppLanguage.from(settings.language),
             enterToSend = settings.enterToSend,
             showAvatarsInMessages = settings.showAvatarsInMessages,
+            replyWithMention = settings.replyWithMention,
             updateState = updateState,
             onCheckForUpdates = viewModel::checkForUpdates,
             onDismissUpdateDialog = viewModel::dismissUpdateDialog,
@@ -311,6 +312,7 @@ private fun SettingsScreen(
             onOpenCache = { navigate(SettingsPage.CACHE) },
             onEnterToSendChange = viewModel::setEnterToSend,
             onShowAvatarsInMessagesChange = viewModel::setShowAvatarsInMessages,
+            onReplyWithMentionChange = viewModel::setReplyWithMention,
         )
         SettingsPage.SAVED_MESSAGES -> SavedMessagesScreen(
             viewModel = savedMessagesViewModel,
