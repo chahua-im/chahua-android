@@ -202,6 +202,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { AppGraph.settings.setEnterToSend(enabled) }
     }
 
+    fun setReplyWithMention(enabled: Boolean) {
+        viewModelScope.launch { AppGraph.settings.setReplyWithMention(enabled) }
+    }
+
     fun setDeveloperEnabled(enabled: Boolean) {
         viewModelScope.launch { AppGraph.settings.setDeveloperEnabled(enabled) }
     }

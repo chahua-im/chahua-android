@@ -152,6 +152,7 @@ internal fun GeneralScreen(
     currentLanguage: AppLanguage,
     enterToSend: Boolean,
     showAvatarsInMessages: Boolean,
+    replyWithMention: Boolean,
     updateState: UpdateUiState,
     onCheckForUpdates: () -> Unit,
     onDismissUpdateDialog: () -> Unit,
@@ -161,6 +162,7 @@ internal fun GeneralScreen(
     onOpenCache: () -> Unit,
     onEnterToSendChange: (Boolean) -> Unit,
     onShowAvatarsInMessagesChange: (Boolean) -> Unit,
+    onReplyWithMentionChange: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
 
@@ -190,6 +192,7 @@ internal fun GeneralScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
         ) {
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -258,6 +261,33 @@ internal fun GeneralScreen(
                     Switch(
                         checked = showAvatarsInMessages,
                         onCheckedChange = onShowAvatarsInMessagesChange,
+                    )
+                }
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onReplyWithMentionChange(!replyWithMention) }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.settings_reply_with_mention),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_reply_with_mention_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Switch(
+                        checked = replyWithMention,
+                        onCheckedChange = onReplyWithMentionChange,
                     )
                 }
             }

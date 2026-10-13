@@ -610,9 +610,9 @@ internal fun ChatScreen(
         }
     }
 
-    /** 长按他人头像：在输入框光标处快速插入 @提及。 */
-    fun quickMention(user: UserDto) {
-        if (user.uid == viewModel.myUid()) return
+    /** 在输入框光标处插入对 [user] 的 @提及；自己的 uid 视为无效（不插入）。 */
+    fun insertMention(user: UserDto): Boolean {
+        if (user.uid == viewModel.myUid()) return false
         val token = "@[uid:${user.uid}] "
         val current = input
         val start = current.selection.start.coerceIn(0, current.text.length)
@@ -626,6 +626,19 @@ internal fun ChatScreen(
             text = newText,
             selection = TextRange(cursor),
         )
+        return true
+    }
+
+    /** 长按他人头像：在输入框光标处快速插入 @提及，并自动弹出键盘。 */
+    fun quickMention(user: UserDto) {
+        if (!insertMention(user)) return
+        focusComposer()
+    }
+
+    /** 回复消息（右滑或菜单点选）后的处理：按设置决定是否自动插入 @对方，并弹出键盘。 */
+    fun startReply(message: MessageDto) {
+        viewModel.setReplyTarget(message)
+        if (appSettings.replyWithMention) insertMention(message.sender)
         focusComposer()
     }
 
@@ -1160,10 +1173,7 @@ internal fun ChatScreen(
                                     }
                                 },
                                 onOpenSticker = { stickerId -> stickerPreviewId = stickerId },
-                                onReply = {
-                                    viewModel.setReplyTarget(item.message)
-                                    focusComposer()
-                                },
+                                onReply = { startReply(item.message) },
                                 onOpenReply = {
                                     item.message.replyToMessage?.id?.let(viewModel::jumpToMessage)
                                 },

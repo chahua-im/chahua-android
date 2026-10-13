@@ -68,6 +68,8 @@
     <string name="settings_enter_to_send">按 Enter 鍵傳送訊息</string>
     <string name="settings_show_avatars_in_messages">在所有訊息旁顯示頭像</string>
     <string name="settings_show_avatars_in_messages_desc">關閉後，同一使用者連續傳送的訊息只在最後一則訊息旁顯示頭像。</string>
+    <string name="settings_reply_with_mention">回覆時自動 @ 對方</string>
+    <string name="settings_reply_with_mention_desc">回覆訊息（右滑或選單選取）時自動在輸入框插入對方的 @提及；回覆自己的訊息時不插入。</string>
     <string name="settings_cache_total">占用空間</string>
     <string name="settings_cache_images">圖片快取</string>
     <string name="settings_cache_other">其他快取</string>

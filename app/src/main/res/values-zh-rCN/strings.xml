@@ -68,6 +68,8 @@
     <string name="settings_enter_to_send">按下回车键发送消息</string>
     <string name="settings_show_avatars_in_messages">在所有消息旁显示头像</string>
     <string name="settings_show_avatars_in_messages_desc">关闭后，同一用户连续发送的消息只在最后一条消息旁显示头像。</string>
+    <string name="settings_reply_with_mention">回复时自动 @ 对方</string>
+    <string name="settings_reply_with_mention_desc">回复消息（右滑或菜单选择）时自动在输入框插入对方的 @提及；回复自己的消息时不插入。</string>
     <string name="settings_cache_total">占用空间</string>
     <string name="settings_cache_images">图片缓存</string>
     <string name="settings_cache_other">其他缓存</string>
