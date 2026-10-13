@@ -164,6 +164,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.media3.common.Player
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
@@ -348,6 +349,12 @@ internal fun ChatScreen(
     val appSettings = LocalAppSettings.current
     val enterToSend = appSettings.enterToSend
     val mentionCandidates by viewModel.mentionCandidates.collectAsState()
+
+    // 会话页可见时收到的新消息直接算已读（不可见时保留未读红点）。
+    LifecycleResumeEffect(Unit) {
+        viewModel.setVisible(true)
+        onPauseOrDispose { viewModel.setVisible(false) }
+    }
 
     var input by remember { mutableStateOf(TextFieldValue("")) }
     val activeMentionQuery = remember(input) { extractActiveMentionQuery(input.text) }

@@ -37,6 +37,14 @@ class ChatMessagingService : Service() {
         private const val FOREGROUND_NOTIFICATION_ID = 1001
         private const val CHAT_NOTIFICATION_BASE = 2000
         private const val THREAD_NOTIFICATION_BASE = 5000
+
+        /** 会话通知 id；与 [notifyNewMessage] 保持一致，便于标记已读后取消。 */
+        fun chatNotificationId(chatId: String): Int =
+            CHAT_NOTIFICATION_BASE + chatId.hashCode().mod(1000)
+
+        /** 话题通知 id；与 [notifyNewMessage] 保持一致。 */
+        fun threadNotificationId(chatId: String, threadRootId: String): Int =
+            THREAD_NOTIFICATION_BASE + "$chatId:$threadRootId".hashCode().mod(1000)
     }
 
     override fun onCreate() {
@@ -121,9 +129,9 @@ class ChatMessagingService : Service() {
             ?: getString(R.string.message_sender_unknown)
         val content = getString(R.string.message_sender_format, sender, previewText(msg))
         val notificationId = if (threadMode) {
-            THREAD_NOTIFICATION_BASE + "$msg.chatId:${msg.replyRootId}".hashCode().mod(1000)
+            threadNotificationId(msg.chatId, msg.replyRootId.orEmpty())
         } else {
-            CHAT_NOTIFICATION_BASE + msg.chatId.hashCode().mod(1000)
+            chatNotificationId(msg.chatId)
         }
         val notification = NotificationCompat.Builder(
             this,
