@@ -303,6 +303,7 @@ private fun SettingsScreen(
             enterToSend = settings.enterToSend,
             showAvatarsInMessages = settings.showAvatarsInMessages,
             replyWithMention = settings.replyWithMention,
+            tapTitleToScrollTop = settings.tapTitleToScrollTop,
             updateState = updateState,
             onCheckForUpdates = viewModel::checkForUpdates,
             onDismissUpdateDialog = viewModel::dismissUpdateDialog,
@@ -313,6 +314,7 @@ private fun SettingsScreen(
             onEnterToSendChange = viewModel::setEnterToSend,
             onShowAvatarsInMessagesChange = viewModel::setShowAvatarsInMessages,
             onReplyWithMentionChange = viewModel::setReplyWithMention,
+            onTapTitleToScrollTopChange = viewModel::setTapTitleToScrollTop,
         )
         SettingsPage.SAVED_MESSAGES -> SavedMessagesScreen(
             viewModel = savedMessagesViewModel,
