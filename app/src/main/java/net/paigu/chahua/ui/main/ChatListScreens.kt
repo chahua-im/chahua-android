@@ -73,6 +73,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.fragment.app.viewModels
 import androidx.window.embedding.SplitController
 import net.paigu.chahua.R
@@ -99,6 +102,7 @@ import net.paigu.chahua.ui.invite.InviteRedeemActivity
 import net.paigu.chahua.ui.media.MediaViewerActivity
 import net.paigu.chahua.ui.theme.LocalAppSettings
 import net.paigu.chahua.ui.theme.ChahuaTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
 
@@ -108,6 +112,9 @@ private enum class ChatTab(val titleRes: Int) {
     THREADS(net.paigu.chahua.R.string.tab_threads),
     FRIENDS(net.paigu.chahua.R.string.tab_friends),
 }
+
+/** 待处理好友请求数的前台轮询间隔。 */
+private const val FRIEND_REQUEST_POLL_MS = 60_000L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -145,6 +152,9 @@ fun ChatListScreen(
     val loading by viewModel.loading.collectAsState()
     val error by viewModel.error.collectAsState()
     val friendsLoading by viewModel.friendsLoading.collectAsState()
+    // 待处理好友请求：好友标签上显示红点。
+    val pendingFriendRequestCount by viewModel.pendingCount.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
     val errorText = error
     val latencyMs by viewModel.latencyMs.collectAsState()
     val context = LocalContext.current
@@ -174,6 +184,17 @@ fun ChatListScreen(
 
     LaunchedEffect(tab) {
         if (tab != ChatTab.FRIENDS) showFriendRequests = false
+    }
+
+    // 好友请求没有实时推送，只能主动拉：前台期间每分钟轮询一次待处理数，
+    // 回到前台 / 进入页面时立刻拉一次，用于「好友」标签上的红点。
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                viewModel.refreshPendingCount()
+                delay(FRIEND_REQUEST_POLL_MS)
+            }
+        }
     }
 
     LaunchedEffect(showFriendRequests) {
@@ -235,7 +256,7 @@ fun ChatListScreen(
                         ChatTab.ALL -> hasAnyUnread
                         ChatTab.GROUP -> hasGroupUnread
                         ChatTab.THREADS -> hasThreadUnread
-                        ChatTab.FRIENDS -> hasDmUnread
+                        ChatTab.FRIENDS -> hasDmUnread || pendingFriendRequestCount > 0
                     }
                     Tab(
                         selected = safeIndex == index,

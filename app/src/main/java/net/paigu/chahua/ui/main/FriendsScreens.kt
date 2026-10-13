@@ -110,6 +110,10 @@ internal fun FriendsTabContent(
     val friends by viewModel.friends.collectAsState()
     val pendingCount by viewModel.pendingCount.collectAsState()
     val loading by viewModel.friendsLoading.collectAsState()
+    // 按最近聊天排序：有会话的按最后一条消息时间倒序，没聊过的排在最后（按昵称）。
+    val sortedFriends = remember(friends, dmChats) {
+        sortFriendsByRecentChat(friends, dmChats)
+    }
 
     LazyColumn {
         item(key = "friend_requests_entry") {
@@ -178,7 +182,7 @@ internal fun FriendsTabContent(
                 }
             }
             else -> {
-                items(friends, key = { it.user.uid }) { friend ->
+                items(sortedFriends, key = { it.user.uid }) { friend ->
                     FriendChatRow(
                         friend = friend,
                         dmChat = dmChats.firstOrNull { it.peer?.uid == friend.user.uid },
@@ -189,6 +193,27 @@ internal fun FriendsTabContent(
             }
         }
     }
+}
+
+/**
+ * 好友排序：有私聊会话的按最后一条消息时间倒序，从没聊过的排在最后（按昵称）。
+ */
+internal fun sortFriendsByRecentChat(
+    friends: List<FriendResponse>,
+    dmChats: List<ChatDto>,
+): List<FriendResponse> {
+    val dmByUid = dmChats.mapNotNull { chat -> chat.peer?.uid?.let { it to chat } }.toMap()
+    return friends.sortedWith(
+        compareByDescending<FriendResponse> { friend ->
+            lastChatMillis(dmByUid[friend.user.uid])
+        }.thenBy { it.user.username.orEmpty() },
+    )
+}
+
+/** 会话最后一条消息时间（毫秒）；没有会话或解析失败按 0，用于排到最后。 */
+internal fun lastChatMillis(chat: ChatDto?): Long {
+    val raw = chat?.lastMessageAt ?: return 0L
+    return runCatching { java.time.Instant.parse(raw).toEpochMilli() }.getOrDefault(0L)
 }
 
 @Composable
