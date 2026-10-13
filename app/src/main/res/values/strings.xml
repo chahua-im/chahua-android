@@ -382,6 +382,12 @@
     <string name="media_saved">Saved to gallery</string>
     <string name="media_save_failed">Save failed: %1$s</string>
     <string name="media_save_permission_denied">Storage permission is required to save</string>
+    <string name="media_save_scope_title">Save media</string>
+    <string name="media_save_scope_message">This message has %1$d photos or videos. Which ones do you want to save?</string>
+    <string name="media_save_current">Current only</string>
+    <string name="media_save_all">Save all (%1$d)</string>
+    <string name="media_saved_count">Saved %1$d items to gallery</string>
+    <string name="media_saved_partial">Saved %1$d, %2$d failed</string>
     <string name="media_play">Play</string>
     <string name="media_pause">Pause</string>
     <string name="media_rewind_5">Rewind 5 seconds</string>

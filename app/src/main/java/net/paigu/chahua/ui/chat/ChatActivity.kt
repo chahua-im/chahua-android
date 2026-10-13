@@ -1213,15 +1213,14 @@ internal fun ChatScreen(
                                 threadMode = uiState.threadMode,
                                 onOpenMedia = onOpenMedia,
                                 onDownloadFile = { url, fileName, kind ->
-                                    scope.launch {
-                                        runCatching {
-                                            MediaSaver.downloadFile(
-                                                context = context,
-                                                url = url,
-                                                fileName = fileName,
-                                                mime = kind,
-                                            )
-                                        }
+                                    // 应用级作用域下载：退出聊天页/Activity 也不会中断。
+                                    MediaSaver.saveFileInBackground(
+                                        context = context,
+                                        url = url,
+                                        fileName = fileName,
+                                        mime = kind,
+                                    ) { result ->
+                                        result
                                             .onSuccess {
                                                 Toast.makeText(
                                                     context,

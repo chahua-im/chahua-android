@@ -320,6 +320,14 @@ internal fun MessageBubble(
                     val imageAttachments = message.attachments.filter {
                         it.kind.startsWith("image")
                     }
+                    // 打开查看器时把这条消息的全部图片/视频一起带上：
+                    // 一是可以在图片/视频之间左右滑动，二是保存时能「全部保存」。
+                    val mediaAttachments = message.attachments.filter {
+                        it.kind.startsWith("image") || it.kind.startsWith("video")
+                    }
+                    fun mediaViewerItems() = mediaAttachments.map {
+                        MediaViewerItem(it.url, it.kind, it.fileName)
+                    }
                     message.attachments.forEach { attachment ->
                         when {
                             attachment.kind.startsWith("audio") -> Unit
@@ -333,15 +341,10 @@ internal fun MessageBubble(
                                         .clip(RoundedCornerShape(12.dp))
                                         .combinedClickable(
                                             onClick = {
-                                                val index = imageAttachments
+                                                val index = mediaAttachments
                                                     .indexOfFirst { it.id == attachment.id }
                                                     .coerceAtLeast(0)
-                                                onOpenMedia(
-                                                    imageAttachments.map {
-                                                        MediaViewerItem(it.url, "image", it.fileName)
-                                                    },
-                                                    index,
-                                                )
+                                                onOpenMedia(mediaViewerItems(), index)
                                             },
                                             onLongClick = { menuExpanded = true },
                                         ),
@@ -352,16 +355,10 @@ internal fun MessageBubble(
                                 VideoAttachmentBubble(
                                     attachment = attachment,
                                     onOpenViewer = {
-                                        onOpenMedia(
-                                            listOf(
-                                                MediaViewerItem(
-                                                    attachment.url,
-                                                    "video",
-                                                    attachment.fileName,
-                                                ),
-                                            ),
-                                            0,
-                                        )
+                                        val index = mediaAttachments
+                                            .indexOfFirst { it.id == attachment.id }
+                                            .coerceAtLeast(0)
+                                        onOpenMedia(mediaViewerItems(), index)
                                     },
                                     onLongClick = { menuExpanded = true },
                                 )

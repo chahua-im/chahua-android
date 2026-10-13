@@ -7,7 +7,14 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.paigu.chahua.core.AppGraph
 import okhttp3.Request
@@ -16,8 +23,77 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 
+/** 一次保存请求（图片 / 视频 / 文件）。 */
+data class MediaSaveRequest(
+    val url: String,
+    val kind: String,
+    val fileName: String?,
+)
+
 /** 下载媒体文件并保存到系统相册（图片）或影片（视频）。 */
 object MediaSaver {
+
+    /**
+     * 与应用同生命周期的作用域：保存过程中退出界面 / 销毁 Activity
+     * 都不会中断下载。
+     */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private val _saving = MutableStateFlow<Set<String>>(emptySet())
+
+    /** 正在保存的媒体 URL，界面退出后再回来仍可显示进度。 */
+    val saving: StateFlow<Set<String>> = _saving.asStateFlow()
+
+    /**
+     * 后台批量保存到相册 / 影片：顺序执行，避免一次打满带宽。
+     * 回调在主线程执行，[onResult] 带上成功与失败数量。
+     */
+    fun saveToGalleryInBackground(
+        context: Context,
+        requests: List<MediaSaveRequest>,
+        onEachSaved: (MediaSaveRequest) -> Unit = {},
+        onResult: (saved: Int, failed: Int, firstError: String?) -> Unit = { _, _, _ -> },
+    ) {
+        if (requests.isEmpty()) return
+        val appContext = context.applicationContext
+        scope.launch {
+            var saved = 0
+            var failed = 0
+            var firstError: String? = null
+            requests.forEach { request ->
+                _saving.update { it + request.url }
+                val result = runCatching {
+                    downloadToGallery(appContext, request.url, request.kind, request.fileName)
+                }
+                _saving.update { it - request.url }
+                if (result.isSuccess) {
+                    saved++
+                    withContext(Dispatchers.Main) { onEachSaved(request) }
+                } else {
+                    failed++
+                    if (firstError == null) firstError = result.exceptionOrNull()?.message
+                }
+            }
+            withContext(Dispatchers.Main) { onResult(saved, failed, firstError) }
+        }
+    }
+
+    /** 后台保存普通文件到系统“下载”目录；同样不随界面销毁而取消。 */
+    fun saveFileInBackground(
+        context: Context,
+        url: String,
+        fileName: String?,
+        mime: String,
+        onResult: (Result<String>) -> Unit,
+    ) {
+        val appContext = context.applicationContext
+        scope.launch {
+            _saving.update { it + url }
+            val result = runCatching { downloadFile(appContext, url, fileName, mime) }
+            _saving.update { it - url }
+            withContext(Dispatchers.Main) { onResult(result) }
+        }
+    }
 
     /**
      * 下载并保存媒体，返回最终保存的文件名。

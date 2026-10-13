@@ -380,6 +380,12 @@
     <string name="media_saved">已保存到相册</string>
     <string name="media_save_failed">保存失败：%1$s</string>
     <string name="media_save_permission_denied">需要存储权限才能保存</string>
+    <string name="media_save_scope_title">保存媒体</string>
+    <string name="media_save_scope_message">这条消息包含 %1$d 个图片/视频，要保存哪些？</string>
+    <string name="media_save_current">仅当前</string>
+    <string name="media_save_all">全部保存（%1$d）</string>
+    <string name="media_saved_count">已保存 %1$d 个到相册</string>
+    <string name="media_saved_partial">已保存 %1$d 个，%2$d 个失败</string>
     <string name="media_play">播放</string>
     <string name="media_pause">暂停</string>
     <string name="media_rewind_5">快退 5 秒</string>
