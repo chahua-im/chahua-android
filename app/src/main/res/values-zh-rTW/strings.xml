@@ -260,6 +260,7 @@
     <string name="chat_create_permission_denied">沒有建立群組的權限</string>
     <string name="chat_reply_preview">回覆 %1$s：%2$s</string>
     <string name="chat_reply_to">回覆</string>
+    <string name="chat_plus_one">＋1</string>
     <string name="chat_scroll_to_top">回到頂部</string>
     <string name="chat_reply_message">訊息</string>
     <string name="chat_play">播放</string>

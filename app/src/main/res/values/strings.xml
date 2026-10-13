@@ -262,6 +262,7 @@
     <string name="chat_create_permission_denied">You do not have permission to create chats</string>
     <string name="chat_reply_preview">Reply to %1$s: %2$s</string>
     <string name="chat_reply_to">Reply</string>
+    <string name="chat_plus_one">+1</string>
     <string name="chat_scroll_to_top">Scroll to top</string>
     <string name="chat_reply_message">message</string>
     <string name="chat_play">Play</string>

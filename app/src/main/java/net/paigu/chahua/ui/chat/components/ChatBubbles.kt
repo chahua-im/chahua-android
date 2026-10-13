@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Reply
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.ContentCopy
@@ -117,6 +118,7 @@ internal fun MessageBubble(
     onDownloadFile: (url: String, fileName: String?, kind: String) -> Unit,
     onOpenSticker: (stickerId: String) -> Unit,
     onReply: () -> Unit,
+    onRepeat: () -> Unit,
     onOpenReply: () -> Unit,
     onOpenThread: () -> Unit,
     onAvatarClick: (UserDto) -> Unit,
@@ -452,6 +454,19 @@ internal fun MessageBubble(
                                 onOpenEmojiPicker()
                             },
                             actions = buildList {
+                                // 「＋1」：把这条消息的内容用自己的账号再发一遍。
+                                if (!message.message.isNullOrBlank()) {
+                                    add(
+                                        MessageActionItem(
+                                            label = stringResource(R.string.chat_plus_one),
+                                            icon = Icons.Filled.Add,
+                                            onClick = {
+                                                menuExpanded = false
+                                                onRepeat()
+                                            },
+                                        ),
+                                    )
+                                }
                                 add(
                                     MessageActionItem(
                                         label = stringResource(R.string.chat_reply_to),
