@@ -89,6 +89,8 @@ data class AppSettings(
     val replyWithMention: Boolean = false,
     /** 点击聊天标题栏快速回到消息顶部。 */
     val tapTitleToScrollTop: Boolean = true,
+    /** 长按菜单里的「＋1」（把该条消息内容用自己的账号再发一遍）。 */
+    val plusOneEnabled: Boolean = false,
     val developerEnabled: Boolean = false,
     val showUidInChat: Boolean = false,
     val showLatency: Boolean = false,
@@ -125,6 +127,7 @@ class SettingsManager(context: Context) {
         val ENTER_TO_SEND = booleanPreferencesKey("enter_to_send")
         val REPLY_WITH_MENTION = booleanPreferencesKey("reply_with_mention")
         val TAP_TITLE_SCROLL_TOP = booleanPreferencesKey("tap_title_scroll_top")
+        val PLUS_ONE_ENABLED = booleanPreferencesKey("plus_one_enabled")
         val DEVELOPER_ENABLED = booleanPreferencesKey("developer_enabled")
         val SHOW_UID_IN_CHAT = booleanPreferencesKey("show_uid_in_chat")
         val SHOW_LATENCY = booleanPreferencesKey("show_latency")
@@ -160,6 +163,7 @@ class SettingsManager(context: Context) {
             enterToSend = p[Keys.ENTER_TO_SEND] ?: true,
             replyWithMention = p[Keys.REPLY_WITH_MENTION] ?: false,
             tapTitleToScrollTop = p[Keys.TAP_TITLE_SCROLL_TOP] ?: true,
+            plusOneEnabled = p[Keys.PLUS_ONE_ENABLED] ?: false,
             developerEnabled = p[Keys.DEVELOPER_ENABLED] ?: false,
             showUidInChat = p[Keys.SHOW_UID_IN_CHAT] ?: false,
             showLatency = p[Keys.SHOW_LATENCY] ?: false,
@@ -283,6 +287,11 @@ class SettingsManager(context: Context) {
     suspend fun setTapTitleToScrollTop(enabled: Boolean) {
         prefs.edit { it[Keys.TAP_TITLE_SCROLL_TOP] = enabled }
         snapshot = snapshot.copy(tapTitleToScrollTop = enabled)
+    }
+
+    suspend fun setPlusOneEnabled(enabled: Boolean) {
+        prefs.edit { it[Keys.PLUS_ONE_ENABLED] = enabled }
+        snapshot = snapshot.copy(plusOneEnabled = enabled)
     }
 
     suspend fun setDeveloperEnabled(enabled: Boolean) {

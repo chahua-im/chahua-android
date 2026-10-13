@@ -1209,6 +1209,7 @@ internal fun ChatScreen(
                                 },
                                 onOpenSticker = { stickerId -> stickerPreviewId = stickerId },
                                 onReply = { startReply(item.message) },
+                                onRepeat = { viewModel.repeatMessage(item.message) },
                                 onOpenReply = {
                                     item.message.replyToMessage?.id?.let(viewModel::jumpToMessage)
                                 },

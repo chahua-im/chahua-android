@@ -515,8 +515,43 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** 选择图片后：上传到对象存储，再以附件形式发送消息。 */
-    /** 从输入框发送：可带文字 + 附件草稿，也可只发送文字。 */
+    /**
+     * 「＋1」：把 [message] 的正文用自己的账号原样再发一遍。
+     *
+     * 不引用原消息、不带附件；在话题里打开时发进同一个话题。
+     * 正文里的 `@[uid:N]` 提及会原样带上，由服务端重新解析。
+     */
+    fun repeatMessage(message: MessageDto) {
+        val text = message.message?.takeIf { it.isNotBlank() } ?: return
+        val chatId = _chatId.value ?: return
+        val threadId = _threadId.value
+        val pending = PendingMessage(
+            clientGeneratedId = "android-${UUID.randomUUID()}",
+            text = text,
+            attachmentLocalUri = null,
+            createdAt = Instant.now().toString(),
+            replyToId = null,
+        )
+        _pending.update { it + pending }
+        viewModelScope.launch {
+            engine.sendMessage(
+                chatId = chatId,
+                text = text,
+                replyToId = null,
+                replyRootId = threadId,
+                clientGeneratedId = pending.clientGeneratedId,
+            )
+                .onSuccess { removePending(pending.clientGeneratedId) }
+                .onFailure {
+                    removePending(pending.clientGeneratedId)
+                    _uiState.value = _uiState.value.copy(
+                        error = getString(R.string.chat_send_failed, it.message),
+                    )
+                }
+        }
+    }
+
+    /** 选择图片后：上传到对象存储，再以附件形式发送消息。 */    /** 从输入框发送：可带文字 + 附件草稿，也可只发送文字。 */
     fun sendDraft(text: String, attachment: DraftAttachment?) {
         if (text.isBlank() && attachment == null) return
         if (attachment == null) {

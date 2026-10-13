@@ -154,6 +154,7 @@ internal fun GeneralScreen(
     showAvatarsInMessages: Boolean,
     replyWithMention: Boolean,
     tapTitleToScrollTop: Boolean,
+    plusOneEnabled: Boolean,
     updateState: UpdateUiState,
     onCheckForUpdates: () -> Unit,
     onDismissUpdateDialog: () -> Unit,
@@ -165,6 +166,7 @@ internal fun GeneralScreen(
     onShowAvatarsInMessagesChange: (Boolean) -> Unit,
     onReplyWithMentionChange: (Boolean) -> Unit,
     onTapTitleToScrollTopChange: (Boolean) -> Unit,
+    onPlusOneEnabledChange: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
 
@@ -317,6 +319,33 @@ internal fun GeneralScreen(
                     Switch(
                         checked = tapTitleToScrollTop,
                         onCheckedChange = onTapTitleToScrollTopChange,
+                    )
+                }
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onPlusOneEnabledChange(!plusOneEnabled) }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.settings_plus_one),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_plus_one_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Switch(
+                        checked = plusOneEnabled,
+                        onCheckedChange = onPlusOneEnabledChange,
                     )
                 }
             }
