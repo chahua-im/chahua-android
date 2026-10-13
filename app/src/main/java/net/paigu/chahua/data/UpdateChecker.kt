@@ -9,6 +9,7 @@ import kotlinx.serialization.Serializable
 import net.paigu.chahua.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import android.os.Build
 
 @Serializable
 data class GitHubRelease(
@@ -64,9 +65,11 @@ object UpdateChecker {
             val latestVersion = releaseVersion(release)
                 ?: release.tagName.ifBlank { release.name }
             val available = compareVersions(latestVersion, BuildConfig.VERSION_NAME) > 0
-            val apkAsset = release.assets.firstOrNull {
-                it.name.endsWith(".apk", ignoreCase = true)
-            }
+
+            // 按设备 ABI 优先匹配对应的 apk（例如 arm64-v8a / armeabi-v7a / x86_64 / x86）
+            val apkAssets = release.assets.filter { it.name.endsWith(".apk", ignoreCase = true) }
+            val apkAsset = pickAssetForDevice(apkAssets)
+
             UpdateCheckResult(
                 available = available,
                 latestVersion = latestVersion,
@@ -74,6 +77,35 @@ object UpdateChecker {
                 downloadUrl = apkAsset?.browserDownloadUrl ?: release.htmlUrl,
             )
         }
+    }
+
+    private fun pickAssetForDevice(apks: List<GitHubAsset>): GitHubAsset? {
+        if (apks.isEmpty()) return null
+        // 获取设备支持的 ABI 列表，按优先级排序（Android 提供）
+        val supportedAbis = try {
+            Build.SUPPORTED_ABIS.toList()
+        } catch (t: Throwable) {
+            emptyList()
+        }
+        // 优先按 ABI 名称在文件名中匹配（忽略大小写），按设备 ABI 顺序选择第一个匹配的 apk。
+        for (abi in supportedAbis) {
+            val match = apks.firstOrNull { it.name.contains(abi, ignoreCase = true) }
+            if (match != null) return match
+            // 兼容常见别名（例如 aarch64 / arm64）
+            val alias = when {
+                abi.contains("arm64") -> listOf("arm64", "aarch64")
+                abi.contains("armeabi") -> listOf("armeabi", "armeabi-v7a", "armeabi-v7a")
+                abi.contains("x86_64") -> listOf("x86_64", "x64")
+                abi.contains("x86") -> listOf("x86")
+                else -> listOf(abi)
+            }
+            for (a in alias) {
+                val match2 = apks.firstOrNull { it.name.contains(a, ignoreCase = true) }
+                if (match2 != null) return match2
+            }
+        }
+        // 未找到 ABI 匹配项时回退到第一个 apk
+        return apks.firstOrNull()
     }
 
     private fun releaseVersion(release: GitHubRelease): String? {
