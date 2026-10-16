@@ -351,9 +351,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             _cacheState.value = _cacheState.value.copy(clearing = true, message = null)
             withContext(Dispatchers.IO) {
                 val app = getApplication<Application>()
-                // 视频缓存（SimpleCache）的索引和分片都在 cacheDir 下：必须先关掉再删目录，
-                // 否则内存索引会和磁盘对不上（角标显示已缓存、实际读不到数据）。
-                VideoCache.release()
+                // 视频缓存的索引在 databases/ 下：必须逐个删除资源（索引+分片一起清），
+                // 再删缓存目录，最后重开，否则会留下"索引说已缓存、文件没了"的脏条目。
+                VideoCache.clearAll()
                 AppGraph.imageLoader.diskCache?.clear()
                 AppGraph.imageLoader.memoryCache?.clear()
                 VideoThumbnail.clearMemory()
