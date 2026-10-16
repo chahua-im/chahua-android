@@ -97,9 +97,11 @@ class MainActivity : FragmentActivity() {
                     dialog = startupDialog,
                     onDismiss = ::dismissStartupDialog,
                     onDownload = ::openUpdateDownload,
-                    onOpenBatterySettings = {
+                    onRequestIgnoreBatteryOptimization = {
                         dismissStartupDialog()
-                        BatteryOptimization.openSettings(this@MainActivity)
+                        // 直接弹系统授权框（ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS），
+                        // 用户一步同意即可，无需再跳设置页手动查找本应用。
+                        BatteryOptimization.requestIgnore(this@MainActivity)
                     },
                     onNeverAskBatteryAgain = {
                         dismissStartupDialog()
