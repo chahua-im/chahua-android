@@ -392,6 +392,7 @@
     <string name="media_pause">Pause</string>
     <string name="media_rewind_5">Rewind 5 seconds</string>
     <string name="media_forward_10">Forward 10 seconds</string>
+    <string name="media_load_failed">Failed to load image</string>
     <string name="common_avatar_desc">avatar</string>
     <string name="user_profile_uid">UID: %1$d</string>
     <string name="user_profile_space">Personal Space</string>

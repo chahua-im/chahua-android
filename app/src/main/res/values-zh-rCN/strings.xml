@@ -390,6 +390,7 @@
     <string name="media_pause">暂停</string>
     <string name="media_rewind_5">快退 5 秒</string>
     <string name="media_forward_10">快进 10 秒</string>
+    <string name="media_load_failed">图片加载失败</string>
     <string name="common_avatar_desc">头像</string>
     <string name="user_profile_uid">UID：%1$d</string>
     <string name="user_profile_space">个人空间</string>
