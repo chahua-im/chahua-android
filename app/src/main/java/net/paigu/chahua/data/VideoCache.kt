@@ -2,6 +2,7 @@ package net.paigu.chahua.data
 
 import android.content.Context
 import android.media.MediaDataSource
+import android.os.SystemClock
 import androidx.media3.common.C
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
@@ -19,9 +20,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -53,6 +57,12 @@ object VideoCache {
     private const val CONNECT_TIMEOUT_MS = 15_000
     private const val READ_TIMEOUT_MS = 30_000
 
+    /**
+     * 预缓存进度的最小上报间隔。CacheWriter 每读满一个缓冲块（约 64KB）就回调一次，
+     * 一条 200MB 的视频会有数千次回调；每次都更新 [states] 会让聊天里所有视频气泡反复重组。
+     */
+    private const val PROGRESS_EMIT_INTERVAL_MS = 250L
+
     @Volatile
     private var cache: SimpleCache? = null
 
@@ -74,9 +84,13 @@ object VideoCache {
         userAgent: String,
         headersFor: (String) -> Map<String, String>,
     ) {
-        if (cache != null) return
         this.userAgent = userAgent
         this.headersFor = headersFor
+        open(context)
+    }
+
+    private fun open(context: Context) {
+        if (cache != null) return
         val dir = File(context.cacheDir, "video_cache")
         cache = SimpleCache(
             dir,
@@ -85,12 +99,63 @@ object VideoCache {
         )
     }
 
-    /** 是否已完整缓存。 */
-    fun isCached(url: String): Boolean {
+    /**
+     * 清空整个缓存目录前必须先关掉 [SimpleCache]：
+     * 它的索引与缓存分片都在 `cacheDir` 下，带着打开状态把这些文件删掉，
+     * 内存里的索引就和磁盘对不上了（[isCached] 会说"已缓存"但读不到数据）。
+     * 清完目录后再调用 [reopen]。
+     */
+    fun release() {
+        jobs.values.forEach { it.cancel() }
+        jobs.clear()
+        _states.value = emptyMap()
+        runCatching { cache?.release() }
+        cache = null
+    }
+
+    /** [release] 之后重新打开缓存（沿用已记录的 User-Agent 与鉴权头）。 */
+    fun reopen(context: Context) = open(context)
+
+    /**
+     * 某个视频的缓存状态流：只在这条视频自身状态变化时通知，避免所有气泡一起重组。
+     * 没有任务记录时要回落到磁盘检查——上次启动前就缓存完的视频不会留下任务记录。
+     */
+    fun stateFlow(url: String, sizeHint: Long = 0L): Flow<VideoCacheState> =
+        _states.map { it[url] }
+            .distinctUntilChanged()
+            .map { state ->
+                state ?: if (isCached(url, sizeHint)) {
+                    VideoCacheState.Cached
+                } else {
+                    VideoCacheState.Idle
+                }
+            }
+
+    /** 播放把缓存写满后刷新状态，让聊天气泡的角标从"未缓存"变成"已缓存"。 */
+    fun refreshState(url: String, sizeHint: Long = 0L) {
+        if (url.isBlank() || cache == null) return
+        if (isCached(url, sizeHint)) markCached(url)
+    }
+
+    /**
+     * 是否已完整缓存。[sizeHint] 是视频总大小（未知传 0）。
+     *
+     * 注意**不能**写成 `cache.isCached(url, 0, C.LENGTH_UNSET)`：Media3 的
+     * `CachedContent.getCachedBytesLength` 里 `checkArgument(length >= 0)`，
+     * 传 -1 会抛 IllegalArgumentException，被 runCatching 吞掉后永远返回 false
+     * （曾经因此让"已缓存"判断恒为假）。有体积就比已缓存字节数，没有就退回分片判断。
+     */
+    fun isCached(url: String, sizeHint: Long = 0L): Boolean {
         if (url.isBlank()) return false
         val cache = cache ?: return false
+        if (sizeHint > 0L) {
+            return runCatching { cache.getCachedBytes(url, 0, sizeHint) >= sizeHint }
+                .getOrDefault(false)
+        }
+        // 体积未知：整段缓存只会留下一个"非空洞、开放结尾"的分片。
         return runCatching {
-            cache.isCached(url, 0, C.LENGTH_UNSET.toLong())
+            val spans = cache.getCachedSpans(url)
+            spans.size == 1 && spans.first().let { it.isCached && !it.isHoleSpan && it.isOpenEnded() }
         }.getOrDefault(false)
     }
 
@@ -103,8 +168,8 @@ object VideoCache {
     }
 
     /** 当前状态：已缓存 > 正在下载 > 未缓存。 */
-    fun stateOf(url: String): VideoCacheState {
-        if (isCached(url)) return VideoCacheState.Cached
+    fun stateOf(url: String, sizeHint: Long = 0L): VideoCacheState {
+        if (isCached(url, sizeHint)) return VideoCacheState.Cached
         return _states.value[url] ?: VideoCacheState.Idle
     }
 
@@ -114,7 +179,7 @@ object VideoCache {
      */
     fun preCache(url: String, totalHint: Long = 0L) {
         if (url.isBlank() || cache == null) return
-        if (isCached(url)) {
+        if (isCached(url, totalHint)) {
             markCached(url)
             return
         }
@@ -122,7 +187,12 @@ object VideoCache {
         _states.update { it + (url to VideoCacheState.Downloading(cachedBytes(url), totalHint)) }
         jobs[url] = scope.launch {
             val dataSource = cacheDataSource(url)
+            // 节流：进度只用于展示，没必要每个缓冲块都推一次。
+            var lastEmitAt = 0L
             val progress = CacheWriter.ProgressListener { requestLength, bytesCached, _ ->
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastEmitAt < PROGRESS_EMIT_INTERVAL_MS) return@ProgressListener
+                lastEmitAt = now
                 val total = if (requestLength > 0) requestLength else totalHint
                 _states.update { it + (url to VideoCacheState.Downloading(bytesCached, total)) }
             }
@@ -132,7 +202,7 @@ object VideoCache {
             }
             runCatching { dataSource.close() }
             jobs.remove(url)
-            if (isCached(url)) {
+            if (isCached(url, totalHint)) {
                 markCached(url)
             } else {
                 // 失败或被取消：回到未缓存状态，下次可以重试。
@@ -148,7 +218,8 @@ object VideoCache {
         return DefaultMediaSourceFactory(
             CacheDataSource.Factory()
                 .setCache(cache)
-                .setUpstreamDataSourceFactory(upstream),
+                .setUpstreamDataSourceFactory(upstream)
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR),
         )
     }
 
@@ -159,9 +230,14 @@ object VideoCache {
      * @param sizeHint 视频总大小（未知传 0）。
      */
     fun mediaDataSource(url: String, sizeHint: Long = 0L): MediaDataSource = object : MediaDataSource() {
+        // 复用同一个 DataSource：抽帧时 MediaMetadataRetriever 会做大量随机读，
+        // 每次 readAt 都新建 CacheDataSource 既浪费分配，也要反复获取缓存锁。
+        // DataSource 的 open/close 仍需成对调用（Media3 要求 open 前必须 close）。
+        private val source: DataSource? by lazy { dataSourceFor(url) }
+
         override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
             if (size <= 0) return 0
-            val source = dataSourceFor(url) ?: return -1
+            val source = source ?: return -1
             return try {
                 source.open(
                     DataSpec.Builder()
@@ -198,6 +274,8 @@ object VideoCache {
         CacheDataSource.Factory()
             .setCache(requireNotNull(cache))
             .setUpstreamDataSourceFactory(httpFactory(url))
+            // 缓存分片损坏 / 索引与磁盘不一致时回退到网络，而不是让播放直接失败。
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
             .createDataSource()
 
     private fun httpFactory(url: String): DataSource.Factory {

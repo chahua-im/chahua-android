@@ -75,6 +75,8 @@
     <string name="settings_plus_one_desc">開啟後，長按訊息的選單裡會多出「＋1」：點一下就把這則訊息的內容用自己的帳號再傳一次。</string>
     <string name="settings_video_precache">影片預快取</string>
     <string name="settings_video_precache_desc">在聊天裡停留觀看影片約 1.3 秒後自動開始快取，之後播放直接走快取；關閉可節省流量。</string>
+    <string name="settings_video_precache_metered">行動網路下自動快取</string>
+    <string name="settings_video_precache_metered_desc">在行動網路（計費網路）下瀏覽聊天時也自動快取影片；關閉後只在 Wi-Fi 下自動快取。手動點擊下載不受影響。</string>
     <string name="settings_tap_title_scroll_top_desc">點擊聊天頁標題欄快速捲到已載入訊息的頂部。</string>
     <string name="settings_cache_total">占用空間</string>
     <string name="settings_cache_images">圖片快取</string>

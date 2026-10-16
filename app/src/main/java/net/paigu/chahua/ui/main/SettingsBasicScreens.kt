@@ -156,6 +156,7 @@ internal fun GeneralScreen(
     tapTitleToScrollTop: Boolean,
     plusOneEnabled: Boolean,
     videoPrecacheEnabled: Boolean,
+    videoPrecacheOnMetered: Boolean,
     updateState: UpdateUiState,
     onCheckForUpdates: () -> Unit,
     onDismissUpdateDialog: () -> Unit,
@@ -169,6 +170,7 @@ internal fun GeneralScreen(
     onTapTitleToScrollTopChange: (Boolean) -> Unit,
     onPlusOneEnabledChange: (Boolean) -> Unit,
     onVideoPrecacheEnabledChange: (Boolean) -> Unit,
+    onVideoPrecacheOnMeteredChange: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
 
@@ -375,6 +377,36 @@ internal fun GeneralScreen(
                     Switch(
                         checked = videoPrecacheEnabled,
                         onCheckedChange = onVideoPrecacheEnabledChange,
+                    )
+                }
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = videoPrecacheEnabled) {
+                            onVideoPrecacheOnMeteredChange(!videoPrecacheOnMetered)
+                        }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.settings_video_precache_metered),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_video_precache_metered_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Switch(
+                        checked = videoPrecacheOnMetered,
+                        onCheckedChange = onVideoPrecacheOnMeteredChange,
+                        enabled = videoPrecacheEnabled,
                     )
                 }
             }

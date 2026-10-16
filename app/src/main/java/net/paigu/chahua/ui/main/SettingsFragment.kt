@@ -306,6 +306,7 @@ private fun SettingsScreen(
             tapTitleToScrollTop = settings.tapTitleToScrollTop,
             plusOneEnabled = settings.plusOneEnabled,
             videoPrecacheEnabled = settings.videoPrecacheEnabled,
+            videoPrecacheOnMetered = settings.videoPrecacheOnMetered,
             updateState = updateState,
             onCheckForUpdates = viewModel::checkForUpdates,
             onDismissUpdateDialog = viewModel::dismissUpdateDialog,
@@ -319,6 +320,7 @@ private fun SettingsScreen(
             onTapTitleToScrollTopChange = viewModel::setTapTitleToScrollTop,
             onPlusOneEnabledChange = viewModel::setPlusOneEnabled,
             onVideoPrecacheEnabledChange = viewModel::setVideoPrecacheEnabled,
+            onVideoPrecacheOnMeteredChange = viewModel::setVideoPrecacheOnMetered,
         )
         SettingsPage.SAVED_MESSAGES -> SavedMessagesScreen(
             viewModel = savedMessagesViewModel,
