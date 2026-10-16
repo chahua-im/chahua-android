@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import coil3.disk.DiskCache
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.paigu.chahua.core.AppGraph
+import net.paigu.chahua.data.AppLog
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
@@ -32,6 +34,8 @@ data class MediaSaveRequest(
 
 /** 下载媒体文件并保存到系统相册（图片）或影片（视频）。 */
 object MediaSaver {
+
+    private const val TAG = "MediaSaver"
 
     /**
      * 与应用同生命周期的作用域：保存过程中退出界面 / 销毁 Activity
@@ -96,7 +100,18 @@ object MediaSaver {
     }
 
     /**
-     * 下载并保存媒体，返回最终保存的文件名。
+     * 保存媒体到相册 / 影片，返回最终保存的文件名。
+     *
+     * 图片优先复用 Coil 磁盘缓存：既然用户已经在查看器里看到这张图，说明这份字节早就下载好了，
+     * 直接从缓存拷进 MediaStore 即可，不再发一次网络请求。
+     *
+     * 缓存命中拿到的就是原内容：Coil 3 的磁盘缓存只存网络响应的原始编码字节
+     * （解码尺寸、裁剪、crossfade 等变换只影响内存缓存与解码结果），
+     * 所以拷出来的文件与「用同一个 URL 重新下载」逐字节一致，也仍是原始尺寸与原始格式。
+     *
+     * 缓存未命中（没在本地展示过 / 被 LRU 淘汰 / 用户清过缓存 / 条目正在写入）时回退到网络下载，
+     * 两者写入相册的逻辑完全一致。
+     *
      * Android 10+ 走 MediaStore（无需权限）；Android 9 及以下写入公共目录，需要 WRITE_EXTERNAL_STORAGE 权限。
      */
     suspend fun downloadToGallery(
@@ -111,17 +126,17 @@ object MediaSaver {
             ?: if (isVideo) "video/mp4" else "image/jpeg"
         val name = buildName(url, fileName, isVideo, mime)
 
-        val response = AppGraph.apiClient.okHttpClient.newCall(
-            Request.Builder().url(url).get().build(),
-        ).execute()
+        // 视频不走 Coil（播放与封面分别走 ExoPlayer 的 SimpleCache 与本地抽帧），
+        // 且 SimpleCache 里只有整段缓存完整时才能还原出原始文件，这里不做复用。
+        if (!isVideo && copyFromImageCache(context, url, mime, name)) {
+            return@withContext name
+        }
+
+        val response = AppGraph.apiClient.okHttpClient.newCall(authRequest(url)).execute()
         response.use { r ->
             if (!r.isSuccessful) throw IOException("HTTP ${r.code}")
             val body = r.body ?: throw IOException("Empty response body")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                writeToMediaStore(context, body.byteStream(), isVideo, mime, name)
-            } else {
-                writeToLegacyStorage(context, body.byteStream(), isVideo, mime, name)
-            }
+            writeToGallery(context, body.byteStream(), isVideo, mime, name)
         }
         name
     }
@@ -134,9 +149,7 @@ object MediaSaver {
         mime: String,
     ): String = withContext(Dispatchers.IO) {
         val name = buildDownloadName(url, fileName, mime)
-        val response = AppGraph.apiClient.okHttpClient.newCall(
-            Request.Builder().url(url).get().build(),
-        ).execute()
+        val response = AppGraph.apiClient.okHttpClient.newCall(authRequest(url)).execute()
         response.use { r ->
             if (!r.isSuccessful) throw IOException("HTTP ${r.code}")
             val body = r.body ?: throw IOException("Empty response body")
@@ -147,6 +160,68 @@ object MediaSaver {
             }
         }
         name
+    }
+
+    /**
+     * 尝试把 Coil 磁盘缓存里的原始字节直接写进相册（只用于图片）。
+     *
+     * @return true 表示已经存好；false 表示没有缓存（或缓存读取失败），调用方应回退到网络下载。
+     */
+    private fun copyFromImageCache(
+        context: Context,
+        url: String,
+        mime: String,
+        name: String,
+    ): Boolean {
+        val snapshot = openCachedImage(url) ?: return false
+        // 拷贝期间必须保持 snapshot 打开：打开状态下该条目不会被 LRU 清理或改写。
+        return snapshot.use { snap ->
+            runCatching {
+                writeToGallery(context, snap.data.toFile().inputStream(), false, mime, name)
+            }.onSuccess {
+                AppLog.d(TAG, "保存命中图片缓存: $url")
+            }.onFailure {
+                AppLog.w(TAG, "读取图片缓存失败，改为下载: ${it.message}")
+            }.isSuccess
+        }
+    }
+
+    /**
+     * 取 Coil 网络磁盘缓存里这个 URL 的条目；没有（未展示过 / 被 LRU 淘汰 / 用户清过缓存）
+     * 或条目正在写入（尚未提交）时返回 null。
+     *
+     * Coil 3 的磁盘缓存 key 就是 URL 本身（`NetworkFetcher.diskCacheKey = diskCacheKey ?: url`），
+     * 与 [net.paigu.chahua.ui.common.AuthAsyncImage] 展示时命中的是同一份条目，
+     * 所以只要图片能显示出来，这里通常就能读到。
+     *
+     * 打开期间该条目不会被清理，调用方必须尽快 close。
+     */
+    private fun openCachedImage(url: String): DiskCache.Snapshot? =
+        runCatching { AppGraph.imageLoader.diskCache?.openSnapshot(url) }.getOrNull()
+
+    /** 统一的媒体请求：只对服务端同源地址附加鉴权头（与 Coil、视频缓存的取头判断一致）。 */
+    private fun authRequest(url: String): Request =
+        Request.Builder()
+            .url(url)
+            .get()
+            .apply {
+                AppGraph.session.authHeadersFor(url).forEach { (k, v) -> header(k, v) }
+            }
+            .build()
+
+    /** 按系统版本把输入流写入相册（图片）或影片（视频）；输入流由写入方负责关闭。 */
+    private fun writeToGallery(
+        context: Context,
+        input: InputStream,
+        isVideo: Boolean,
+        mime: String,
+        name: String,
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            writeToMediaStore(context, input, isVideo, mime, name)
+        } else {
+            writeToLegacyStorage(context, input, isVideo, mime, name)
+        }
     }
 
     private fun writeToMediaStore(

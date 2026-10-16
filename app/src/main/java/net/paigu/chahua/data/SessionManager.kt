@@ -16,6 +16,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import net.paigu.chahua.R
 import net.paigu.chahua.data.models.MeResponse
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.util.UUID
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "chahua_session")
@@ -204,6 +206,21 @@ class SessionManager(context: Context) {
             headers["X-User-Id"] = key
         }
         return headers
+    }
+
+    /**
+     * 按 URL 取本次请求应附加的认证头：只有服务端同源地址才带，
+     * 避免把凭证发给第三方 CDN / 预签名对象存储地址。
+     *
+     * 图片加载（Coil）、视频缓存（ExoPlayer）与保存下载共用这一份判断。
+     */
+    fun authHeadersFor(url: String): Map<String, String> =
+        url.toHttpUrlOrNull()?.let(::authHeadersFor).orEmpty()
+
+    /** [authHeadersFor] 的重载：调用方已有 [HttpUrl] 时避免重复解析。 */
+    fun authHeadersFor(url: HttpUrl): Map<String, String> {
+        val apiHost = snapshot.serverUrl.toHttpUrlOrNull()?.host
+        return if (apiHost != null && url.host == apiHost) authHeaders() else emptyMap()
     }
 
     private suspend fun readServerUrls(): List<String> =

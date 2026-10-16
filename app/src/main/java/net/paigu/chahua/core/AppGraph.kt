@@ -29,7 +29,6 @@ import net.paigu.chahua.data.UserAgentInterceptor
 import net.paigu.chahua.data.VideoCache
 import net.paigu.chahua.service.ChatMessagingService
 import net.paigu.chahua.R
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 
@@ -87,11 +86,8 @@ object AppGraph {
         VideoCache.init(
             context = application,
             userAgent = application.getString(R.string.x_user_agent),
-        ) { url ->
-            val apiHost = session.snapshot().serverUrl.toHttpUrlOrNull()?.host
-            val host = url.toHttpUrlOrNull()?.host
-            if (apiHost != null && host == apiHost) session.authHeaders() else emptyMap()
-        }
+            headersFor = session::authHeadersFor,
+        )
     }
 
     /** 启动后台消息 Service（前台服务，负责 WebSocket 收发与推送通知）。 */
@@ -118,13 +114,9 @@ object AppGraph {
     private fun buildImageLoader(context: Context, session: SessionManager): ImageLoader {
         val authInterceptor = Interceptor { chain ->
             val request = chain.request()
-            val apiHost = session.snapshot().serverUrl.toHttpUrlOrNull()?.host
-            val builder = if (apiHost != null && request.url.host == apiHost) {
-                request.newBuilder().apply {
-                    session.authHeaders().forEach { (k, v) -> header(k, v) }
-                }
-            } else {
-                request.newBuilder()
+            val headers = session.authHeadersFor(request.url)
+            val builder = request.newBuilder().apply {
+                headers.forEach { (k, v) -> header(k, v) }
             }
             chain.proceed(builder.build())
         }
