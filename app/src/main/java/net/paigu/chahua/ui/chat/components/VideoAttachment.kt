@@ -110,6 +110,7 @@ internal fun VideoAttachmentBubble(
             aspectRatio = ratio,
             onOpenFullscreen = onOpenViewer,
             onClose = { previewing = false },
+            onLongClick = onLongClick,
             onDurationKnown = { if (it > 0L) durationMs = it },
             modifier = modifier,
         )
@@ -173,6 +174,7 @@ internal fun VideoAttachmentBubble(
                 VideoCache.preCache(url, attachment.size)
                 previewing = true
             },
+            onLongClick = onLongClick,
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(6.dp),
@@ -180,13 +182,17 @@ internal fun VideoAttachmentBubble(
     }
 }
 
-/** 右上角角标：未缓存=下载按钮+大小，缓存中=进度，已缓存=视频时长。 */
+/**
+ * 右上角角标：未缓存=下载按钮+大小，缓存中=进度，已缓存=视频时长。
+ * 长按和气泡其它区域一致，弹出消息菜单（不是再触发一次下载）。
+ */
 @Composable
 private fun VideoCacheBadge(
     state: VideoCacheState,
     sizeBytes: Long,
     durationMs: Long,
     onDownload: () -> Unit,
+    onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (state is VideoCacheState.Cached && durationMs <= 0L) return
@@ -194,7 +200,7 @@ private fun VideoCacheBadge(
         modifier = modifier
             .clip(RoundedCornerShape(50))
             .background(Color.Black.copy(alpha = 0.55f))
-            .combinedClickable(onClick = onDownload, onLongClick = onDownload)
+            .combinedClickable(onClick = onDownload, onLongClick = onLongClick)
             .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
         when {
@@ -276,6 +282,7 @@ private fun InlineVideoPreview(
     aspectRatio: Float,
     onOpenFullscreen: () -> Unit,
     onClose: () -> Unit,
+    onLongClick: () -> Unit,
     onDurationKnown: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -327,11 +334,7 @@ private fun InlineVideoPreview(
             .width(240.dp)
             .aspectRatio(aspectRatio)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.Black)
-            .combinedClickable(
-                onClick = onOpenFullscreen,
-                onLongClick = onOpenFullscreen,
-            ),
+            .background(Color.Black),
     ) {
         AndroidView(
             factory = { ctx ->
@@ -342,6 +345,16 @@ private fun InlineVideoPreview(
                 }
             },
             modifier = Modifier.fillMaxSize(),
+        )
+        // PlayerView 是真实 View，触摸事件可能被它吃掉。盖一层透明手势层，
+        // 让点击进全屏、长按弹消息菜单都由 Compose 处理。
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .combinedClickable(
+                    onClick = onOpenFullscreen,
+                    onLongClick = onLongClick,
+                ),
         )
         RoundIconButton(
             icon = Icons.Filled.Close,
