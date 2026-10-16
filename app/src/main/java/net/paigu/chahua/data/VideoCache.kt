@@ -16,6 +16,8 @@ import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import java.io.File
+import java.io.IOException
+import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -203,6 +205,40 @@ object VideoCache {
     }
 
     /**
+     * 保存视频用：整段已缓存时返回一个能顺序读出缓存字节的流，内容就是原始视频文件；
+     * 调用方负责 close（用 `use` 包住即可）。没有完整缓存（没缓存过 / 有空洞 / 缓存被清理）
+     * 或无法确定总长度时返回 null，调用方应回退到网络下载。
+     *
+     * 这里用只读的 [CacheDataSource]：不接上游数据源、也不写回缓存，
+     * 所以缓存读不满时宁可抛 [IOException] 让调用方回退，也不会把截断的视频存进相册。
+     *
+     * @param sizeHint 附件上报的体积（未知传 0），仅在缓存里没有记录 `Content-Length` 时兜底。
+     */
+    fun openCachedStream(url: String, sizeHint: Long = 0L): InputStream? {
+        if (url.isBlank() || cache == null) return null
+        if (!isCached(url, sizeHint)) return null
+        // 必须知道确切长度：优先用缓存里记录的真实 Content-Length（下载时由 CacheDataSource 落盘），
+        // 它和已缓存字节数一致；附件上报的体积可能与实际字节数有偏差，只作兜底。
+        val length = contentLength(url).takeIf { it > 0L } ?: sizeHint
+        if (length <= 0L) return null
+        val source = runCatching {
+            CacheDataSource.Factory()
+                .setCache(requireNotNull(cache))
+                // 只读缓存：缺失的部分没有上游可退，直接抛错交给调用方回退网络。
+                .setUpstreamDataSourceFactory(null)
+                .setCacheWriteDataSinkFactory(null)
+                .createDataSource()
+        }.getOrNull() ?: return null
+        return runCatching {
+            source.open(DataSpec.Builder().setUri(url).setLength(length).build())
+            CacheSourceInputStream(source, length)
+        }.onFailure {
+            runCatching { source.close() }
+            AppLog.w(TAG, "打开视频缓存失败: ${it.message}")
+        }.getOrNull()
+    }
+
+    /**
      * 后台把整个视频写进缓存。[totalHint] 为附件里的大小（未知传 0），
      * 仅用于展示进度，不影响下载。
      */
@@ -323,5 +359,45 @@ object VideoCache {
 
     private fun markCached(url: String) {
         _states.update { it + (url to VideoCacheState.Cached) }
+    }
+}
+
+/**
+ * 把 Media3 [DataSource] 适配成顺序读取的 [InputStream]，
+ * 供 [net.paigu.chahua.ui.media.MediaSaver] 把缓存里的视频原样拷进 MediaStore。
+ *
+ * 读满 [expectedLength] 之前就拿到 EOF（缓存被并发清理、分片还在写入等）时抛 [IOException]：
+ * 保存流程会删掉写了一半的半成品并回退到网络下载，绝不把截断的视频存进相册。
+ */
+internal class CacheSourceInputStream(
+    private val source: DataSource,
+    private val expectedLength: Long,
+) : InputStream() {
+
+    private var bytesRead = 0L
+    private var closed = false
+
+    override fun read(): Int {
+        val single = ByteArray(1)
+        return if (read(single, 0, 1) == -1) -1 else single[0].toInt() and 0xFF
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        if (length == 0) return 0
+        val count = source.read(buffer, offset, length)
+        if (count == C.RESULT_END_OF_INPUT) {
+            if (bytesRead < expectedLength) {
+                throw IOException("视频缓存不完整：已读 $bytesRead / $expectedLength")
+            }
+            return -1
+        }
+        bytesRead += count
+        return count
+    }
+
+    override fun close() {
+        if (closed) return
+        closed = true
+        runCatching { source.close() }
     }
 }

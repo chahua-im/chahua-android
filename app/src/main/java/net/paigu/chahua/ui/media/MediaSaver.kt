@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.data.AppLog
+import net.paigu.chahua.data.VideoCache
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
@@ -102,15 +103,17 @@ object MediaSaver {
     /**
      * 保存媒体到相册 / 影片，返回最终保存的文件名。
      *
-     * 图片优先复用 Coil 磁盘缓存：既然用户已经在查看器里看到这张图，说明这份字节早就下载好了，
-     * 直接从缓存拷进 MediaStore 即可，不再发一次网络请求。
+     * 优先复用本地已经下载好的字节，不把同一份内容再下一次：
+     * - 图片：Coil 磁盘缓存 —— 用户既然已经在查看器里看到这张图，说明这份字节早就下载好了；
+     * - 视频：ExoPlayer 的 [VideoCache] —— 整段缓存完整时直接从缓存拷贝，有空洞才回退下载。
      *
-     * 缓存命中拿到的就是原内容：Coil 3 的磁盘缓存只存网络响应的原始编码字节
+     * 缓存里就是原内容：Coil 3 的磁盘缓存只存网络响应的原始编码字节
      * （解码尺寸、裁剪、crossfade 等变换只影响内存缓存与解码结果），
-     * 所以拷出来的文件与「用同一个 URL 重新下载」逐字节一致，也仍是原始尺寸与原始格式。
+     * 视频缓存则是把响应字节逐段原样落盘，所以拷出来的文件与
+     * 「用同一个 URL 重新下载」逐字节一致，也仍是原始尺寸与原始格式。
      *
-     * 缓存未命中（没在本地展示过 / 被 LRU 淘汰 / 用户清过缓存 / 条目正在写入）时回退到网络下载，
-     * 两者写入相册的逻辑完全一致。
+     * 缓存不可用时回退到网络下载（没在本地看过 / 播过、被 LRU 淘汰、用户清过缓存、
+     * 视频还有空洞等），两条路径写入相册的逻辑完全一致。
      *
      * Android 10+ 走 MediaStore（无需权限）；Android 9 及以下写入公共目录，需要 WRITE_EXTERNAL_STORAGE 权限。
      */
@@ -126,11 +129,12 @@ object MediaSaver {
             ?: if (isVideo) "video/mp4" else "image/jpeg"
         val name = buildName(url, fileName, isVideo, mime)
 
-        // 视频不走 Coil（播放与封面分别走 ExoPlayer 的 SimpleCache 与本地抽帧），
-        // 且 SimpleCache 里只有整段缓存完整时才能还原出原始文件，这里不做复用。
-        if (!isVideo && copyFromImageCache(context, url, mime, name)) {
-            return@withContext name
+        val fromCache = if (isVideo) {
+            copyFromVideoCache(context, url, mime, name)
+        } else {
+            copyFromImageCache(context, url, mime, name)
         }
+        if (fromCache) return@withContext name
 
         val response = AppGraph.apiClient.okHttpClient.newCall(authRequest(url)).execute()
         response.use { r ->
@@ -160,6 +164,29 @@ object MediaSaver {
             }
         }
         name
+    }
+
+    /**
+     * 尝试把 ExoPlayer 视频缓存里已完整下载的字节直接写进影片（只用于视频）。
+     *
+     * @return true 表示已经存好；false 表示没有完整缓存（或缓存读取失败），调用方应回退到网络下载。
+     */
+    private fun copyFromVideoCache(
+        context: Context,
+        url: String,
+        mime: String,
+        name: String,
+    ): Boolean {
+        val stream = runCatching { VideoCache.openCachedStream(url) }.getOrNull() ?: return false
+        return stream.use { input ->
+            runCatching {
+                writeToGallery(context, input, true, mime, name)
+            }.onSuccess {
+                AppLog.d(TAG, "保存命中视频缓存: $url")
+            }.onFailure {
+                AppLog.w(TAG, "读取视频缓存失败，改为下载: ${it.message}")
+            }.isSuccess
+        }
     }
 
     /**
