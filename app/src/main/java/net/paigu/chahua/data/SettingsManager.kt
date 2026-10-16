@@ -73,9 +73,9 @@ enum class FontSizeOption(val key: String, val scale: Float, val displayNameRes:
 }
 
 data class AppSettings(
-    val showAllTab: Boolean = false,
-    val hideThreadsInAllTab: Boolean = false,
-    val sortAllByLatest: Boolean = false,
+    val showAllTab: Boolean = true,
+    val hideThreadsInAllTab: Boolean = true,
+    val sortAllByLatest: Boolean = true,
     val fontSizeKey: String = FontSizeOption.NORMAL.key,
     val themeColor: String = ThemeColorOption.SYSTEM.key,
     val customThemeColor: String = "",
@@ -151,9 +151,9 @@ class SettingsManager(context: Context) {
 
     val settingsState: Flow<AppSettings> = prefs.data.map { p ->
         AppSettings(
-            showAllTab = p[Keys.SHOW_ALL_TAB] ?: false,
-            hideThreadsInAllTab = p[Keys.HIDE_THREADS_IN_ALL_TAB] ?: false,
-            sortAllByLatest = p[Keys.SORT_ALL_BY_LATEST] ?: false,
+            showAllTab = p[Keys.SHOW_ALL_TAB] ?: true,
+            hideThreadsInAllTab = p[Keys.HIDE_THREADS_IN_ALL_TAB] ?: true,
+            sortAllByLatest = p[Keys.SORT_ALL_BY_LATEST] ?: true,
             fontSizeKey = p[Keys.FONT_SIZE] ?: FontSizeOption.NORMAL.key,
             themeColor = p[Keys.THEME_COLOR] ?: ThemeColorOption.SYSTEM.key,
             customThemeColor = p[Keys.CUSTOM_THEME_COLOR] ?: "",
