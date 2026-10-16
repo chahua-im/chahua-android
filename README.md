@@ -5,9 +5,9 @@
 ![Min SDK](https://img.shields.io/badge/minSdk-24-brightgreen)
 ![Target SDK](https://img.shields.io/badge/targetSdk-36-brightgreen)
 
-[茶话](https://github.com/chahua-im/chahua)的开源 Android 客户端
+[茶话](https://github.com/chahua-im/chahua)的开源 Android 客户端，注入了一些了❤️来制作~
 
-[茶话](https://github.com/chahua-im/chahua)是一个即时通讯平台，本仓库实现了完整的 Android 客户端：覆盖群聊、话题、私聊、好友、表情包等核心聊天场景，提供后台消息通知、多媒体消息、消息管理等功能。
+关于茶话：[茶话](https://github.com/chahua-im/chahua)是一个即时通讯平台，介个仓库实现了完~整的 Android 客户端：覆盖群聊、话题、私聊、好友、表情包等核心聊天场景，提供后台消息通知、多媒体消息、消息管理等功能。
 
 ## 已实现的功能
 
@@ -37,7 +37,7 @@
 
 环境要求：
 
-- Android Studio（最新稳定版）
+- Android Studio（最新稳定版） 或
 - JDK 17+
 - Android SDK（compileSdk 36，minSdk 24，targetSdk 36，支持 Android 7.0 及以上）
 
