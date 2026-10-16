@@ -13,6 +13,8 @@ import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.core.BatteryOptimization
 import net.paigu.chahua.R
 import net.paigu.chahua.data.UpdateChecker
+import net.paigu.chahua.data.VideoCache
+import net.paigu.chahua.data.VideoThumbnail
 import java.io.File
 
 data class SettingsUiState(
@@ -218,6 +220,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { AppGraph.settings.setVideoPrecacheEnabled(enabled) }
     }
 
+    fun setVideoPrecacheOnMetered(enabled: Boolean) {
+        viewModelScope.launch { AppGraph.settings.setVideoPrecacheOnMetered(enabled) }
+    }
+
     fun setDeveloperEnabled(enabled: Boolean) {
         viewModelScope.launch { AppGraph.settings.setDeveloperEnabled(enabled) }
     }
@@ -344,11 +350,17 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _cacheState.value = _cacheState.value.copy(clearing = true, message = null)
             withContext(Dispatchers.IO) {
+                val app = getApplication<Application>()
+                // 视频缓存（SimpleCache）的索引和分片都在 cacheDir 下：必须先关掉再删目录，
+                // 否则内存索引会和磁盘对不上（角标显示已缓存、实际读不到数据）。
+                VideoCache.release()
                 AppGraph.imageLoader.diskCache?.clear()
                 AppGraph.imageLoader.memoryCache?.clear()
-                getApplication<Application>().cacheDir.listFiles()?.forEach { child ->
+                VideoThumbnail.clearMemory()
+                app.cacheDir.listFiles()?.forEach { child ->
                     child.deleteRecursively()
                 }
+                VideoCache.reopen(app)
             }
             loadCacheSize()
             _cacheState.value = _cacheState.value.copy(

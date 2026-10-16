@@ -14,6 +14,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
@@ -21,6 +27,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -65,6 +72,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -75,17 +83,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -96,11 +107,18 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
+import coil3.compose.AsyncImage
+import coil3.request.CachePolicy
+import coil3.request.ImageRequest
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import kotlin.math.abs
+import kotlin.math.min
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -280,6 +298,25 @@ private fun MediaViewerScreen(
         }
     }
 
+    // 图片控件栏：单击图片切换显隐（单击不再直接退出，避免和双击抢事件造成点击延迟），
+    // 显示 3 秒后自动淡出，与视频控件保持一致。
+    val currentPageItem = items.getOrNull(pagerState.currentPage)
+    val currentIsImage = currentPageItem != null && !currentPageItem.kind.startsWith("video")
+    val currentSaving = currentPageItem?.url?.let { savingUrls.contains(it) } == true
+    var imageControlsVisible by remember { mutableStateOf(true) }
+    var currentPageZoomed by remember { mutableStateOf(false) }
+
+    // 翻页后清掉放大标记，否则会把翻页手势一直锁住。
+    LaunchedEffect(pagerState.currentPage) {
+        currentPageZoomed = false
+    }
+    LaunchedEffect(imageControlsVisible, currentIsImage, pagerState.currentPage) {
+        if (imageControlsVisible && currentIsImage) {
+            delay(IMAGE_CONTROLS_AUTO_HIDE_MS)
+            imageControlsVisible = false
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -289,6 +326,8 @@ private fun MediaViewerScreen(
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
+            // 放大状态下先专心拖图片，避免和左右翻页互相抢手势。
+            userScrollEnabled = !currentPageZoomed,
         ) { page ->
             val item = items[page]
             val saving = item.url in savingUrls
@@ -301,34 +340,54 @@ private fun MediaViewerScreen(
                     hideControlsInitially = hideControls,
                 )
             } else {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    ZoomableImage(url = item.url, onTap = onBack)
-                    OverlayIconButton(
-                        icon = Icons.Filled.Download,
-                        contentDescription = stringResource(R.string.media_save),
-                        onClick = ::requestSave,
-                        showProgress = saving,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .statusBarsPadding()
-                            .padding(8.dp),
-                    )
-                }
+                ZoomableImage(
+                    url = item.url,
+                    onToggleControls = { imageControlsVisible = !imageControlsVisible },
+                    onClose = onBack,
+                    onZoomedChange = { currentPageZoomed = it },
+                )
             }
         }
-        if (items.size > 1) {
-            Text(
+        // 视频页沿用原来的常驻页码；图片页的页码跟控件栏一起显示 / 隐藏。
+        if (!currentIsImage && items.size > 1) {
+            PageIndicator(
                 text = "${pagerState.currentPage + 1} / ${items.size}",
-                color = Color.White,
-                style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
-                    .padding(top = 8.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.Black.copy(alpha = 0.4f))
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                    .padding(top = 8.dp),
             )
+        }
+        AnimatedVisibility(
+            visible = currentIsImage && imageControlsVisible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OverlayIconButton(
+                    icon = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.chat_back),
+                    onClick = onBack,
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                if (items.size > 1) {
+                    PageIndicator(text = "${pagerState.currentPage + 1} / ${items.size}")
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                OverlayIconButton(
+                    icon = Icons.Filled.Download,
+                    contentDescription = stringResource(R.string.media_save),
+                    onClick = ::requestSave,
+                    showProgress = currentSaving,
+                )
+            }
         }
     }
 
@@ -756,68 +815,390 @@ private fun SpeedMenu(
     }
 }
 
+/** 页码胶囊：图片页跟控件栏一起显隐，视频页常驻。 */
 @Composable
-private fun ZoomableImage(url: String, onTap: () -> Unit) {
+private fun PageIndicator(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        color = Color.White,
+        style = MaterialTheme.typography.labelLarge,
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.Black.copy(alpha = 0.4f))
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+    )
+}
+
+// ---------------------------------------------------------------------------
+// 图片查看的手感参数
+// ---------------------------------------------------------------------------
+
+/** 捏合能达到的最大缩放倍数。 */
+private const val MAX_IMAGE_SCALE = 5f
+
+/** 双击一次放大到的倍数。 */
+private const val DOUBLE_TAP_SCALE = 2.5f
+
+/** 低于这个倍数就算"没放大"：双击还原、下拉退出、边界夹取都按它判断。 */
+private const val ZOOM_EPSILON = 1.05f
+
+/** 图片控件栏自动隐藏延时，与视频控件保持一致。 */
+private const val IMAGE_CONTROLS_AUTO_HIDE_MS = 3000L
+
+/** 下拉超过视口高度的这个比例就关闭查看器。 */
+private const val DISMISS_THRESHOLD_FRACTION = 0.22f
+
+/** 触发下拉所需的最小位移，避免轻点被误判成下拉。 */
+private const val DISMISS_MIN_DRAG_DP = 24f
+
+/** 下拉甩动速度阈值（px/s）：够快时不必拉满距离也能关闭。 */
+private const val DISMISS_FLING_PX_PER_SEC = 1800f
+
+/** 松手后按速度滑行的时长系数，做出"甩一下"的惯性。 */
+private const val PAN_GLIDE_FACTOR = 0.12f
+
+/** 低于这个速度就不滑行，否则松手会显得发飘。 */
+private const val PAN_FLING_MIN_PX_PER_SEC = 500f
+
+/** 图片手势当前处于哪种模式。 */
+private enum class ImageGesture { UNDECIDED, PAN, TRANSFORM, DISMISS, PAGER }
+
+/**
+ * 可缩放的图片查看：
+ * - 双指捏合以双指中心为焦点缩放；双击以双击点为焦点放大 / 还原，均带弹簧动画；
+ * - 平移始终夹在图片边界内，缩放变化后不会把图片甩出屏幕；
+ * - 未放大时下拉可关闭（图片跟手位移 + 渐隐 + 缩小），松手不过阈值则弹回；
+ * - 未放大时单击滑动一律不消费，交给外层 HorizontalPager 翻页；
+ * - 单击只切换控件栏（由调用方渲染），退出走返回按钮 / 系统返回 / 下拉。
+ *
+ * 点击检测与缩放平移检测是两个 pointerInput，但分工明确：前者只在原地点击时消费事件，
+ * 后者只在进入拖动 / 缩放后消费，因此不会互相抢手势。
+ */
+@Composable
+private fun ZoomableImage(
+    url: String,
+    onToggleControls: () -> Unit,
+    onClose: () -> Unit,
+    onZoomedChange: (Boolean) -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
+    var dismissY by remember { mutableFloatStateOf(0f) }
+    // 正在播放的缩放 / 回弹动画。手势接管前先取消，避免动画和手指抢同一个值。
+    val runningAnimation = remember { mutableStateOf<Job?>(null) }
+    var intrinsic by remember { mutableStateOf(Size.Zero) }
+    var container by remember { mutableStateOf(IntSize.Zero) }
+    var loading by remember { mutableStateOf(true) }
+    var loadFailed by remember { mutableStateOf(false) }
+    var retryKey by remember { mutableIntStateOf(0) }
+
+    fun cancelAnimation() {
+        runningAnimation.value?.cancel()
+        runningAnimation.value = null
+    }
+
+    fun notifyZoomed() {
+        onZoomedChange(scale > ZOOM_EPSILON)
+    }
+
+    /**
+     * 用 Animatable 驱动一次数值动画。
+     * 手势的 [awaitEachGesture] 是 `@RestrictsSuspension` 作用域，里面不能调用挂起函数，
+     * 所以所有动画都放在这里、由 [runningAnimation] 统一取消。
+     */
+    suspend fun animateFloat(
+        start: Float,
+        end: Float,
+        spec: AnimationSpec<Float>,
+        apply: (Float) -> Unit,
+    ) {
+        if (start == end) return
+        Animatable(start).animateTo(end, spec) { apply(value) }
+    }
+
+    suspend fun animateOffset(
+        start: Offset,
+        end: Offset,
+        spec: AnimationSpec<Offset>,
+        apply: (Offset) -> Unit,
+    ) {
+        if (start == end) return
+        Animatable(start, Offset.VectorConverter).animateTo(end, spec) { apply(value) }
+    }
+
+    /** 同时把缩放与偏移动画到目标值，让动画过程中焦点不漂。 */
+    fun animateTo(targetScale: Float, targetOffset: Offset) {
+        cancelAnimation()
+        runningAnimation.value = scope.launch {
+            coroutineScope {
+                launch {
+                    animateFloat(
+                        scale,
+                        targetScale,
+                        spring(dampingRatio = 1f, stiffness = Spring.StiffnessMediumLow),
+                    ) { scale = it }
+                }
+                launch {
+                    animateOffset(
+                        offset,
+                        targetOffset,
+                        spring(dampingRatio = 1f, stiffness = Spring.StiffnessMediumLow),
+                    ) { offset = it }
+                }
+            }
+            notifyZoomed()
+        }
+    }
+
+    /** ContentScale.Fit 之后图片在屏幕上的显示尺寸（未缩放时用于算边界）。 */
+    fun fittedSize(): Size {
+        val image = intrinsic
+        val box = container
+        if (!image.width.isFinite() || !image.height.isFinite() ||
+            image.width <= 0f || image.height <= 0f ||
+            box.width <= 0 || box.height <= 0
+        ) {
+            return Size.Zero
+        }
+        val factor = min(box.width / image.width, box.height / image.height)
+        return Size(image.width * factor, image.height * factor)
+    }
+
+    /** 当前倍数下允许的最大平移量：图片边缘不允许滑进视口内。 */
+    fun panLimit(currentScale: Float): Offset {
+        val fitted = fittedSize()
+        if (fitted == Size.Zero) return Offset.Zero
+        return Offset(
+            ((fitted.width * currentScale - container.width) / 2f).coerceAtLeast(0f),
+            ((fitted.height * currentScale - container.height) / 2f).coerceAtLeast(0f),
+        )
+    }
+
+    fun clampOffset(value: Offset, currentScale: Float): Offset {
+        val limit = panLimit(currentScale)
+        return Offset(
+            value.x.coerceIn(-limit.x, limit.x),
+            value.y.coerceIn(-limit.y, limit.y),
+        )
+    }
+
+    /**
+     * 以 [focal]（相对视口中心）为焦点缩放 [factor] 倍，并叠加手指平移 [pan]：
+     * 焦点下的内容保持不动，再夹回边界，避免图片被拖出屏幕。
+     */
+    fun zoomAround(focal: Offset, pan: Offset, factor: Float): Pair<Float, Offset> {
+        val oldScale = scale
+        val newScale = (oldScale * factor).coerceIn(1f, MAX_IMAGE_SCALE)
+        if (newScale == oldScale && pan == Offset.Zero) return oldScale to offset
+        val contentPoint = (focal - offset) / oldScale
+        return newScale to clampOffset(focal + pan - contentPoint * newScale, newScale)
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(Unit) {
+            .onSizeChanged { container = it }
+            .pointerInput(url) {
                 detectTapGestures(
-                    onTap = { onTap() },
-                    onDoubleTap = {
-                        if (scale > 1f) {
-                            scale = 1f
-                            offset = Offset.Zero
+                    onTap = { if (!loadFailed) onToggleControls() },
+                    onDoubleTap = { tap ->
+                        val target = if (scale > ZOOM_EPSILON) 1f else DOUBLE_TAP_SCALE
+                        val focal = tap - Offset(size.width / 2f, size.height / 2f)
+                        val contentPoint = (focal - offset) / scale
+                        val targetOffset = if (target == 1f) {
+                            Offset.Zero
                         } else {
-                            scale = 2.5f
+                            clampOffset(focal - contentPoint * target, target)
                         }
+                        animateTo(target, targetOffset)
                     },
                 )
             }
-            .pointerInput(Unit) {
-                // 缩放/平移：未放大（scale == 1）时不消费单指滑动，
-                // 让外层 HorizontalPager 处理左右翻页；放大后或双指缩放时才接管。
+            .pointerInput(url) {
                 awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
-                    do {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val touchSlop = viewConfiguration.touchSlop
+                    var mode = ImageGesture.UNDECIDED
+                    var traveled = Offset.Zero
+                    var lastPosition = down.position
+                    var velocity = Offset.Zero
+
+                    while (true) {
                         val event = awaitPointerEvent()
-                        val canceled = event.changes.any { it.isConsumed }
-                        if (!canceled) {
-                            val pointerCount = event.changes.count { it.pressed }
-                            val zoomChange = event.calculateZoom()
-                            val panChange = event.calculatePan()
-                            if (pointerCount > 1 || scale > 1f) {
-                                event.changes.forEach { it.consume() }
-                                val newScale = (scale * zoomChange).coerceIn(1f, 4f)
-                                scale = newScale
-                                offset = if (newScale > 1f) {
-                                    offset + panChange
+                        val pressed = event.changes.filter { it.pressed }
+                        if (pressed.isEmpty()) break
+
+                        if (pressed.size > 1) {
+                            // 双指：缩放 + 平移，焦点跟随双指中心。
+                            if (mode != ImageGesture.TRANSFORM) {
+                                mode = ImageGesture.TRANSFORM
+                                cancelAnimation()
+                            }
+                            val factor = event.calculateZoom()
+                            val pan = event.calculatePan()
+                            val centroid = event.calculateCentroid(useCurrent = true)
+                            val focal = centroid - Offset(size.width / 2f, size.height / 2f)
+                            val (newScale, newOffset) = zoomAround(focal, pan, factor)
+                            scale = newScale
+                            offset = newOffset
+                            event.changes.forEach { it.consume() }
+                            lastPosition = centroid
+                            continue
+                        }
+
+                        val change = pressed.first()
+                        val delta = change.position - change.previousPosition
+                        val elapsed = (change.uptimeMillis - down.uptimeMillis).coerceAtLeast(1L)
+                        velocity = (change.position - lastPosition) / elapsed.toFloat() * 1000f
+                        lastPosition = change.position
+                        traveled += delta
+
+                        if (mode == ImageGesture.UNDECIDED) {
+                            // 方向锁：放大后一律平移；未放大时向下拉才进入下拉关闭，
+                            // 横向滑动直接放行给 HorizontalPager。
+                            mode = when {
+                                scale > ZOOM_EPSILON -> ImageGesture.PAN
+                                traveled.y > touchSlop && abs(traveled.y) > abs(traveled.x) ->
+                                    ImageGesture.DISMISS
+                                abs(traveled.x) > touchSlop || abs(traveled.y) > touchSlop ->
+                                    ImageGesture.PAGER
+                                else -> ImageGesture.UNDECIDED
+                            }
+                            if (mode != ImageGesture.UNDECIDED && mode != ImageGesture.PAGER) {
+                                cancelAnimation()
+                            }
+                        }
+
+                        when (mode) {
+                            ImageGesture.PAN, ImageGesture.TRANSFORM -> {
+                                offset = clampOffset(offset + delta, scale)
+                                change.consume()
+                            }
+                            ImageGesture.DISMISS -> {
+                                dismissY = (dismissY + delta.y).coerceAtLeast(0f)
+                                change.consume()
+                            }
+                            else -> Unit
+                        }
+                    }
+
+                    when (mode) {
+                        ImageGesture.DISMISS -> {
+                            val height = size.height.coerceAtLeast(1)
+                            val pulled = dismissY
+                            val flung = velocity.y > DISMISS_FLING_PX_PER_SEC &&
+                                pulled > DISMISS_MIN_DRAG_DP.dp.toPx()
+                            cancelAnimation()
+                            runningAnimation.value = scope.launch {
+                                if (pulled > height * DISMISS_THRESHOLD_FRACTION || flung) {
+                                    animateFloat(
+                                        dismissY,
+                                        height * 1.2f,
+                                        tween(durationMillis = 160),
+                                    ) { dismissY = it }
+                                    onClose()
                                 } else {
-                                    Offset.Zero
+                                    animateFloat(
+                                        dismissY,
+                                        0f,
+                                        spring(
+                                            dampingRatio = 1f,
+                                            stiffness = Spring.StiffnessMediumLow,
+                                        ),
+                                    ) { dismissY = it }
                                 }
                             }
                         }
-                    } while (!canceled && event.changes.any { it.pressed })
+                        ImageGesture.PAN, ImageGesture.TRANSFORM -> {
+                            // 捏合到 1 倍以下时收回 1 倍；松手够快则按速度滑行一小段，做出惯性。
+                            val targetScale = if (scale < ZOOM_EPSILON) 1f else scale
+                            val glide = if (
+                                targetScale > 1f &&
+                                velocity.getDistance() > PAN_FLING_MIN_PX_PER_SEC
+                            ) {
+                                clampOffset(offset + velocity * PAN_GLIDE_FACTOR, targetScale)
+                            } else {
+                                clampOffset(offset, targetScale)
+                            }
+                            animateTo(targetScale, glide)
+                        }
+                        else -> Unit
+                    }
                 }
             },
         contentAlignment = Alignment.Center,
     ) {
-        AuthAsyncImage(
-            url = url,
+        AsyncImage(
+            model = if (retryKey == 0) {
+                url
+            } else {
+                // 重试：绕开内存缓存里缓存的失败结果，重新拉一次。
+                ImageRequest.Builder(context)
+                    .data(url)
+                    .memoryCachePolicy(CachePolicy.DISABLED)
+                    .build()
+            },
             contentDescription = stringResource(R.string.media_title),
+            imageLoader = AppGraph.imageLoader,
+            contentScale = ContentScale.Fit,
+            onLoading = {
+                loading = true
+                loadFailed = false
+            },
+            onSuccess = { state ->
+                loading = false
+                loadFailed = false
+                val imageSize = state.painter.intrinsicSize
+                if (imageSize.width.isFinite() && imageSize.height.isFinite()) {
+                    intrinsic = imageSize
+                }
+            },
+            onError = {
+                loading = false
+                loadFailed = true
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
+                    // 下拉进度：跟手位移 + 轻微缩小 + 渐隐，松手越界则滑出屏幕。
+                    val pull = (dismissY /
+                        (container.height * DISMISS_THRESHOLD_FRACTION).coerceAtLeast(1f))
+                        .coerceIn(0f, 1f)
+                    val zoom = scale * (1f - 0.16f * pull)
+                    scaleX = zoom
+                    scaleY = zoom
                     translationX = offset.x
-                    translationY = offset.y
+                    translationY = offset.y + dismissY
+                    alpha = 1f - 0.55f * pull
                 },
-            contentScale = ContentScale.Fit,
         )
+        if (loading) {
+            CircularProgressIndicator(
+                color = Color.White,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(36.dp),
+            )
+        }
+        if (loadFailed) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = stringResource(R.string.media_load_failed),
+                    color = Color.White.copy(alpha = 0.85f),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                TextButton(
+                    onClick = {
+                        loadFailed = false
+                        loading = true
+                        retryKey++
+                    },
+                ) {
+                    Text(text = stringResource(R.string.retry), color = Color.White)
+                }
+            }
+        }
     }
 }
 

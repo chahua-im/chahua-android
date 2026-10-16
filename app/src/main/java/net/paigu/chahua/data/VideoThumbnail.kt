@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
+import android.util.LruCache
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Semaphore
@@ -37,6 +38,14 @@ object VideoThumbnail {
     /** 抽帧并发上限：群资料里一屏可能有多个视频，避免同时起太多解码器。 */
     private val semaphore = Semaphore(2)
 
+    /** 内存里保留的封面总量上限：滑动聊天列表时不必反复解码同一张 JPEG。 */
+    private const val MEMORY_CACHE_BYTES = 12 * 1024 * 1024
+
+    private val memory = object : LruCache<String, VideoPoster>(MEMORY_CACHE_BYTES) {
+        override fun sizeOf(key: String, value: VideoPoster): Int =
+            value.bitmap?.allocationByteCount ?: 64
+    }
+
     private fun cacheDir(context: Context): File =
         File(context.cacheDir, "video_thumbs")
 
@@ -47,9 +56,10 @@ object VideoThumbnail {
         File(cacheDir(context), "${url.hashCode().toUInt().toString(16)}.dur")
 
     /** 读封面：内存/磁盘命中直接返回，否则抽帧、缩放、写盘（同时记录时长）。 */
-    suspend fun load(context: Context, url: String, sizeHint: Long = 0L): VideoPoster? =
-        withContext(Dispatchers.IO) {
-            if (url.isBlank()) return@withContext null
+    suspend fun load(context: Context, url: String, sizeHint: Long = 0L): VideoPoster? {
+        if (url.isBlank()) return null
+        memory.get(url)?.let { return it }
+        val poster = withContext(Dispatchers.IO) {
             val file = cacheFile(context, url)
             val durationFile = durationFile(context, url)
             if (file.exists()) {
@@ -82,11 +92,20 @@ object VideoThumbnail {
             }
             VideoPoster(scaled, durationMs)
         }
+        if (poster != null) memory.put(url, poster)
+        return poster
+    }
 
     /** 删除某个视频的封面与时长记录（视频缓存被清理时一并调用）。 */
     fun evict(context: Context, url: String) {
+        memory.remove(url)
         runCatching { cacheFile(context, url).delete() }
         runCatching { durationFile(context, url).delete() }
+    }
+
+    /** 清空内存里的封面（设置里"清理缓存"时调用）。 */
+    fun clearMemory() {
+        memory.evictAll()
     }
 
     /** 抽第一帧（关键帧）并读取时长；失败返回 null。 */

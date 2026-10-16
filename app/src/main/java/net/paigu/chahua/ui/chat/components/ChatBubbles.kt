@@ -10,7 +10,10 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -69,6 +72,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -136,6 +141,9 @@ internal fun MessageBubble(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var anchorBounds by remember { mutableStateOf(IntRect.Zero) }
+    // 正文里链接的命中测试需要文本布局结果（链接的点击由气泡自己处理，见下面的 Text）。
+    var bodyTextLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
     val fontScale = FontSizeOption.from(LocalAppSettings.current.fontSizeKey).scale
     val showUidInChat = LocalAppSettings.current.showUidInChat
@@ -283,17 +291,37 @@ internal fun MessageBubble(
                         }
                     }
                     if (!message.message.isNullOrBlank()) {
+                        val bodyText = rememberChatMarkdownText(
+                            message = message,
+                            baseStyle = messageStyle,
+                            mine = mine,
+                        )
                         Text(
-                            text = rememberChatMarkdownText(
-                                message = message,
-                                baseStyle = messageStyle,
-                                mine = mine,
-                            ),
+                            text = bodyText.text,
                             style = messageStyle,
                             color = if (mine) {
                                 MaterialTheme.colorScheme.onPrimaryContainer
                             } else {
                                 MaterialTheme.colorScheme.onSurface
+                            },
+                            onTextLayout = { bodyTextLayout = it },
+                            modifier = Modifier.pointerInput(bodyText) {
+                                // 链接点击自己处理：只消费 up、绝不消费 down，
+                                // 长按（含长按在链接文字上）依旧交给气泡的 combinedClickable 弹菜单。
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    val up = waitForUpOrCancellation() ?: return@awaitEachGesture
+                                    val held = up.uptimeMillis - down.uptimeMillis
+                                    if (held > viewConfiguration.longPressTimeoutMillis) {
+                                        // 已经是长按：不消费，留给气泡菜单。
+                                        return@awaitEachGesture
+                                    }
+                                    val layout = bodyTextLayout ?: return@awaitEachGesture
+                                    val link = bodyText.linkAt(layout, down.position)
+                                        ?: return@awaitEachGesture
+                                    up.consume()
+                                    uriHandler.openUri(link.url)
+                                }
                             },
                         )
                     }

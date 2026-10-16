@@ -77,6 +77,8 @@
     <string name="settings_plus_one_desc">When on, the long-press menu gains “+1”: tap it to send the selected message’s content again as your own message.</string>
     <string name="settings_video_precache">Pre-cache videos</string>
     <string name="settings_video_precache_desc">After a video message stays on screen for about 1.3s, caching starts automatically and later playback uses the cache. Turn off to save data.</string>
+    <string name="settings_video_precache_metered">Auto-cache on mobile data</string>
+    <string name="settings_video_precache_metered_desc">Also pre-cache videos automatically when on a metered network. Turn off to pre-cache on Wi-Fi only. Manual downloads are unaffected.</string>
     <string name="settings_tap_title_scroll_top_desc">Tap the chat title bar to quickly scroll to the top of the loaded messages.</string>
     <string name="settings_cache_total">Storage used</string>
     <string name="settings_cache_images">Image cache</string>
@@ -392,6 +394,7 @@
     <string name="media_pause">Pause</string>
     <string name="media_rewind_5">Rewind 5 seconds</string>
     <string name="media_forward_10">Forward 10 seconds</string>
+    <string name="media_load_failed">Failed to load image</string>
     <string name="common_avatar_desc">avatar</string>
     <string name="user_profile_uid">UID: %1$d</string>
     <string name="user_profile_space">Personal Space</string>

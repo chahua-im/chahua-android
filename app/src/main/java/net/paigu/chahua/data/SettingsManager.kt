@@ -73,9 +73,9 @@ enum class FontSizeOption(val key: String, val scale: Float, val displayNameRes:
 }
 
 data class AppSettings(
-    val showAllTab: Boolean = false,
-    val hideThreadsInAllTab: Boolean = false,
-    val sortAllByLatest: Boolean = false,
+    val showAllTab: Boolean = true,
+    val hideThreadsInAllTab: Boolean = true,
+    val sortAllByLatest: Boolean = true,
     val fontSizeKey: String = FontSizeOption.NORMAL.key,
     val themeColor: String = ThemeColorOption.SYSTEM.key,
     val customThemeColor: String = "",
@@ -93,6 +93,8 @@ data class AppSettings(
     val plusOneEnabled: Boolean = false,
     /** 进入聊天后自动预缓存停留查看的视频（关闭可省流量）。 */
     val videoPrecacheEnabled: Boolean = true,
+    /** 计费网络（移动网络）下也自动预缓存视频；关闭后只在非计费网络下自动缓存。 */
+    val videoPrecacheOnMetered: Boolean = true,
     val developerEnabled: Boolean = false,
     val showUidInChat: Boolean = false,
     val showLatency: Boolean = false,
@@ -131,6 +133,7 @@ class SettingsManager(context: Context) {
         val TAP_TITLE_SCROLL_TOP = booleanPreferencesKey("tap_title_scroll_top")
         val PLUS_ONE_ENABLED = booleanPreferencesKey("plus_one_enabled")
         val VIDEO_PRECACHE_ENABLED = booleanPreferencesKey("video_precache_enabled")
+        val VIDEO_PRECACHE_ON_METERED = booleanPreferencesKey("video_precache_on_metered")
         val DEVELOPER_ENABLED = booleanPreferencesKey("developer_enabled")
         val SHOW_UID_IN_CHAT = booleanPreferencesKey("show_uid_in_chat")
         val SHOW_LATENCY = booleanPreferencesKey("show_latency")
@@ -151,9 +154,9 @@ class SettingsManager(context: Context) {
 
     val settingsState: Flow<AppSettings> = prefs.data.map { p ->
         AppSettings(
-            showAllTab = p[Keys.SHOW_ALL_TAB] ?: false,
-            hideThreadsInAllTab = p[Keys.HIDE_THREADS_IN_ALL_TAB] ?: false,
-            sortAllByLatest = p[Keys.SORT_ALL_BY_LATEST] ?: false,
+            showAllTab = p[Keys.SHOW_ALL_TAB] ?: true,
+            hideThreadsInAllTab = p[Keys.HIDE_THREADS_IN_ALL_TAB] ?: true,
+            sortAllByLatest = p[Keys.SORT_ALL_BY_LATEST] ?: true,
             fontSizeKey = p[Keys.FONT_SIZE] ?: FontSizeOption.NORMAL.key,
             themeColor = p[Keys.THEME_COLOR] ?: ThemeColorOption.SYSTEM.key,
             customThemeColor = p[Keys.CUSTOM_THEME_COLOR] ?: "",
@@ -168,6 +171,7 @@ class SettingsManager(context: Context) {
             tapTitleToScrollTop = p[Keys.TAP_TITLE_SCROLL_TOP] ?: true,
             plusOneEnabled = p[Keys.PLUS_ONE_ENABLED] ?: false,
             videoPrecacheEnabled = p[Keys.VIDEO_PRECACHE_ENABLED] ?: true,
+            videoPrecacheOnMetered = p[Keys.VIDEO_PRECACHE_ON_METERED] ?: true,
             developerEnabled = p[Keys.DEVELOPER_ENABLED] ?: false,
             showUidInChat = p[Keys.SHOW_UID_IN_CHAT] ?: false,
             showLatency = p[Keys.SHOW_LATENCY] ?: false,
@@ -301,6 +305,11 @@ class SettingsManager(context: Context) {
     suspend fun setVideoPrecacheEnabled(enabled: Boolean) {
         prefs.edit { it[Keys.VIDEO_PRECACHE_ENABLED] = enabled }
         snapshot = snapshot.copy(videoPrecacheEnabled = enabled)
+    }
+
+    suspend fun setVideoPrecacheOnMetered(enabled: Boolean) {
+        prefs.edit { it[Keys.VIDEO_PRECACHE_ON_METERED] = enabled }
+        snapshot = snapshot.copy(videoPrecacheOnMetered = enabled)
     }
 
     suspend fun setDeveloperEnabled(enabled: Boolean) {

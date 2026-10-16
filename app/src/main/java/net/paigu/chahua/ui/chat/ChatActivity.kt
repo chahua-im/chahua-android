@@ -6,6 +6,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.media.MediaRecorder
+import android.net.ConnectivityManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -221,6 +222,18 @@ private const val MAX_PICKED_ATTACHMENTS = 10
 
 /** 视频消息在屏幕上停留多久后开始预缓存。 */
 private const val VIDEO_PRECACHE_DWELL_MS = 1_300L
+
+/**
+ * 当前网络是否按流量计费（移动网络 / 计费热点）。
+ * 判断不出来时按"计费"处理：宁可少下一次，也不要白白跑掉用户的流量。
+ */
+private fun isMeteredNetwork(context: Context): Boolean = runCatching {
+    val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    manager.isActiveNetworkMetered
+}.getOrDefault(true)
+
+/** 自动预缓存的大小上限：超过这个体积的视频不自动缓存，只能用户手动点开。 */
+private const val MAX_AUTO_PRECACHE_BYTES = 100L * 1024 * 1024
 
 class ChatActivity : ComponentActivity() {
 
@@ -706,10 +719,11 @@ internal fun ChatScreen(
         if (needOlder) viewModel.loadOlder()
     }
     // 视频预缓存：停留在包含视频的消息上约 1.3 秒（期间画面不再变化）后自动开始缓存；
-    // 快速滑过不会触发，设置里可整体关闭以省流量。
+    // 快速滑过不会触发，设置里可整体关闭以省流量；计费网络下是否自动缓存另有一项开关。
     val currentMessages by rememberUpdatedState(messages)
     val videoPrecacheEnabled = appSettings.videoPrecacheEnabled
-    LaunchedEffect(listState, videoPrecacheEnabled) {
+    val videoPrecacheOnMetered = appSettings.videoPrecacheOnMetered
+    LaunchedEffect(listState, videoPrecacheEnabled, videoPrecacheOnMetered) {
         if (!videoPrecacheEnabled) return@LaunchedEffect
         snapshotFlow {
             listState.layoutInfo.visibleItemsInfo
@@ -723,7 +737,12 @@ internal fun ChatScreen(
         }
             .debounce(VIDEO_PRECACHE_DWELL_MS)
             .collect { videos ->
-                videos.forEach { (url, size) -> VideoCache.preCache(url, size) }
+                // 计费网络下是否自动缓存由设置决定（默认允许）。
+                if (!videoPrecacheOnMetered && isMeteredNetwork(context)) return@collect
+                videos.forEach { (url, size) ->
+                    // 超过 100MB 的视频不自动缓存，交给用户手动点开（体积未知时按可缓存处理）。
+                    if (size <= MAX_AUTO_PRECACHE_BYTES) VideoCache.preCache(url, size)
+                }
             }
     }
     LaunchedEffect(uiState.error) {

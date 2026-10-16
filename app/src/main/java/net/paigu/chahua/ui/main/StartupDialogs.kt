@@ -28,7 +28,7 @@ internal fun StartupDialogHost(
     dialog: StartupDialog?,
     onDismiss: () -> Unit,
     onDownload: (String) -> Unit,
-    onOpenBatterySettings: () -> Unit,
+    onRequestIgnoreBatteryOptimization: () -> Unit,
     onNeverAskBatteryAgain: () -> Unit,
 ) {
     when (dialog) {
@@ -76,7 +76,7 @@ internal fun StartupDialogHost(
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = onOpenBatterySettings) {
+                    TextButton(onClick = onRequestIgnoreBatteryOptimization) {
                         Text(stringResource(R.string.battery_optimization_dialog_continue))
                     }
                 },
