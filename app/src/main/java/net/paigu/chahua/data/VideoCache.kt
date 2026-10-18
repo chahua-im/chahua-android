@@ -9,12 +9,15 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheWriter
+import androidx.media3.datasource.cache.ContentMetadata
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import java.io.File
+import java.io.IOException
+import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,11 +60,12 @@ object VideoCache {
     private const val CONNECT_TIMEOUT_MS = 15_000
     private const val READ_TIMEOUT_MS = 30_000
 
-    /**
-     * 预缓存进度的最小上报间隔。CacheWriter 每读满一个缓冲块（约 64KB）就回调一次，
+    /** 预缓存进度的最小上报间隔。CacheWriter 每读满一个缓冲块（约 64KB）就回调一次，
      * 一条 200MB 的视频会有数千次回调；每次都更新 [states] 会让聊天里所有视频气泡反复重组。
      */
     private const val PROGRESS_EMIT_INTERVAL_MS = 250L
+
+    private const val TAG = "VideoCache"
 
     @Volatile
     private var cache: SimpleCache? = null
@@ -100,20 +104,27 @@ object VideoCache {
     }
 
     /**
-     * 清空整个缓存目录前必须先关掉 [SimpleCache]：
-     * 它的索引与缓存分片都在 `cacheDir` 下，带着打开状态把这些文件删掉，
-     * 内存里的索引就和磁盘对不上了（[isCached] 会说"已缓存"但读不到数据）。
-     * 清完目录后再调用 [reopen]。
+     * 清空视频缓存：先逐个删除资源（同时把索引记录一并删掉），再释放缓存实例。
+     *
+     * 注意索引 DB 在 `databases/exoplayer_internal.db`（**不在** `cacheDir` 下），
+     * 所以只把缓存目录删掉会留下"索引说已缓存、文件却没了"的脏条目 —— 必须走
+     * [Cache.removeResource] 才能两边一起清。清完目录后再调用 [reopen]。
      */
-    fun release() {
+    fun clearAll() {
         jobs.values.forEach { it.cancel() }
         jobs.clear()
         _states.value = emptyMap()
-        runCatching { cache?.release() }
+        val closing = cache
         cache = null
+        runCatching {
+            closing?.keys?.forEach { key ->
+                runCatching { closing.removeResource(key) }
+            }
+        }
+        runCatching { closing?.release() }
     }
 
-    /** [release] 之后重新打开缓存（沿用已记录的 User-Agent 与鉴权头）。 */
+    /** [clearAll] 之后重新打开缓存（沿用已记录的 User-Agent 与鉴权头）。 */
     fun reopen(context: Context) = open(context)
 
     /**
@@ -138,25 +149,45 @@ object VideoCache {
     }
 
     /**
-     * 是否已完整缓存。[sizeHint] 是视频总大小（未知传 0）。
+     * 是否已完整缓存。[sizeHint] 是视频总大小（未知传 0），只当最后兜底。
      *
-     * 注意**不能**写成 `cache.isCached(url, 0, C.LENGTH_UNSET)`：Media3 的
+     * 判定顺序：
+     * 1. 分片必须从 0 开始、彼此连续、没有空洞；
+     * 2. 末尾要么是"开放结尾"的分片（下载时长度未知，一直读到 EOF），
+     *    要么已覆盖到"内容长度"；
+     * 3. 内容长度优先用缓存里记录的 HTTP `Content-Length`（和真实下载字节数一致），
+     *    其次才用附件上报的体积 —— 附件体积和实际字节数可能有偏差，
+     *    只靠它判断会出现"明明下完了却一直不算已缓存"。
+     *
+     * 另外**不能**写成 `cache.isCached(url, 0, C.LENGTH_UNSET)`：Media3 的
      * `CachedContent.getCachedBytesLength` 里 `checkArgument(length >= 0)`，
-     * 传 -1 会抛 IllegalArgumentException，被 runCatching 吞掉后永远返回 false
-     * （曾经因此让"已缓存"判断恒为假）。有体积就比已缓存字节数，没有就退回分片判断。
+     * 传 -1 会抛 IllegalArgumentException，被 runCatching 吞掉后永远返回 false。
      */
     fun isCached(url: String, sizeHint: Long = 0L): Boolean {
         if (url.isBlank()) return false
         val cache = cache ?: return false
-        if (sizeHint > 0L) {
-            return runCatching { cache.getCachedBytes(url, 0, sizeHint) >= sizeHint }
-                .getOrDefault(false)
-        }
-        // 体积未知：整段缓存只会留下一个"非空洞、开放结尾"的分片。
         return runCatching {
             val spans = cache.getCachedSpans(url)
-            spans.size == 1 && spans.first().let { it.isCached && !it.isHoleSpan && it.isOpenEnded() }
+            if (spans.isEmpty()) return@runCatching false
+            var covered = 0L
+            for (span in spans) {
+                // 空洞 = 这段没下；和前面不连续 = 中间断了。
+                if (span.isHoleSpan || !span.isCached) return@runCatching false
+                if (span.position > covered) return@runCatching false
+                if (span.isOpenEnded()) return@runCatching true
+                covered = maxOf(covered, span.position + span.length)
+            }
+            val total = contentLength(url).takeIf { it > 0L } ?: sizeHint
+            total > 0L && covered >= total
         }.getOrDefault(false)
+    }
+
+    /** 缓存里记录的 HTTP Content-Length（没有则返回 0）。 */
+    private fun contentLength(url: String): Long {
+        val cache = cache ?: return 0L
+        return runCatching {
+            ContentMetadata.getContentLength(cache.getContentMetadata(url))
+        }.getOrDefault(0L)
     }
 
     /** 已缓存的字节数（未下载完时用于显示进度）。 */
@@ -171,6 +202,40 @@ object VideoCache {
     fun stateOf(url: String, sizeHint: Long = 0L): VideoCacheState {
         if (isCached(url, sizeHint)) return VideoCacheState.Cached
         return _states.value[url] ?: VideoCacheState.Idle
+    }
+
+    /**
+     * 保存视频用：整段已缓存时返回一个能顺序读出缓存字节的流，内容就是原始视频文件；
+     * 调用方负责 close（用 `use` 包住即可）。没有完整缓存（没缓存过 / 有空洞 / 缓存被清理）
+     * 或无法确定总长度时返回 null，调用方应回退到网络下载。
+     *
+     * 这里用只读的 [CacheDataSource]：不接上游数据源、也不写回缓存，
+     * 所以缓存读不满时宁可抛 [IOException] 让调用方回退，也不会把截断的视频存进相册。
+     *
+     * @param sizeHint 附件上报的体积（未知传 0），仅在缓存里没有记录 `Content-Length` 时兜底。
+     */
+    fun openCachedStream(url: String, sizeHint: Long = 0L): InputStream? {
+        if (url.isBlank() || cache == null) return null
+        if (!isCached(url, sizeHint)) return null
+        // 必须知道确切长度：优先用缓存里记录的真实 Content-Length（下载时由 CacheDataSource 落盘），
+        // 它和已缓存字节数一致；附件上报的体积可能与实际字节数有偏差，只作兜底。
+        val length = contentLength(url).takeIf { it > 0L } ?: sizeHint
+        if (length <= 0L) return null
+        val source = runCatching {
+            CacheDataSource.Factory()
+                .setCache(requireNotNull(cache))
+                // 只读缓存：缺失的部分没有上游可退，直接抛错交给调用方回退网络。
+                .setUpstreamDataSourceFactory(null)
+                .setCacheWriteDataSinkFactory(null)
+                .createDataSource()
+        }.getOrNull() ?: return null
+        return runCatching {
+            source.open(DataSpec.Builder().setUri(url).setLength(length).build())
+            CacheSourceInputStream(source, length)
+        }.onFailure {
+            runCatching { source.close() }
+            AppLog.w(TAG, "打开视频缓存失败: ${it.message}")
+        }.getOrNull()
     }
 
     /**
@@ -196,16 +261,20 @@ object VideoCache {
                 val total = if (requestLength > 0) requestLength else totalHint
                 _states.update { it + (url to VideoCacheState.Downloading(bytesCached, total)) }
             }
-            runCatching {
+            // DataSpec 不带长度：writer 会一直读到 EOF，正常返回就代表整段都写进缓存了。
+            // 这条"写完了"的信号不依赖附件体积，所以优先采信；万一 writer 抛异常，
+            // 再退回 isCached 按分片 + 内容长度判断。
+            val completed = runCatching {
                 CacheWriter(dataSource, DataSpec.Builder().setUri(url).build(), null, progress)
                     .cache()
-            }
+            }.isSuccess
             runCatching { dataSource.close() }
             jobs.remove(url)
-            if (isCached(url, totalHint)) {
+            if (completed || isCached(url, totalHint)) {
                 markCached(url)
             } else {
                 // 失败或被取消：回到未缓存状态，下次可以重试。
+                AppLog.d(TAG, "preCache 未完成 url=$url 已缓存字节=${cachedBytes(url)}")
                 _states.update { it - url }
             }
         }
@@ -290,5 +359,45 @@ object VideoCache {
 
     private fun markCached(url: String) {
         _states.update { it + (url to VideoCacheState.Cached) }
+    }
+}
+
+/**
+ * 把 Media3 [DataSource] 适配成顺序读取的 [InputStream]，
+ * 供 [net.paigu.chahua.ui.media.MediaSaver] 把缓存里的视频原样拷进 MediaStore。
+ *
+ * 读满 [expectedLength] 之前就拿到 EOF（缓存被并发清理、分片还在写入等）时抛 [IOException]：
+ * 保存流程会删掉写了一半的半成品并回退到网络下载，绝不把截断的视频存进相册。
+ */
+internal class CacheSourceInputStream(
+    private val source: DataSource,
+    private val expectedLength: Long,
+) : InputStream() {
+
+    private var bytesRead = 0L
+    private var closed = false
+
+    override fun read(): Int {
+        val single = ByteArray(1)
+        return if (read(single, 0, 1) == -1) -1 else single[0].toInt() and 0xFF
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        if (length == 0) return 0
+        val count = source.read(buffer, offset, length)
+        if (count == C.RESULT_END_OF_INPUT) {
+            if (bytesRead < expectedLength) {
+                throw IOException("视频缓存不完整：已读 $bytesRead / $expectedLength")
+            }
+            return -1
+        }
+        bytesRead += count
+        return count
+    }
+
+    override fun close() {
+        if (closed) return
+        closed = true
+        runCatching { source.close() }
     }
 }

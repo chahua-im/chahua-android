@@ -1,5 +1,6 @@
 package net.paigu.chahua.ui.main
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -7,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -26,7 +28,13 @@ internal fun WideFallbackFrame(
     leftContent: @Composable () -> Unit,
     rightContent: @Composable () -> Unit,
 ) {
-    Row(modifier = Modifier.fillMaxSize()) {
+    // 双栏骨架自己铺一层主题背景：否则右栏没有内容时露出的会是窗口背景（按系统夜间模式取色，
+    // 和应用内深浅色设置不一致时会突然出现一整块反色）。
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth(DEFAULT_LEFT_RATIO)

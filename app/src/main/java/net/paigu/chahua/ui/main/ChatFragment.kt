@@ -289,6 +289,8 @@ private fun WideChatLayout(
                     selectedThreadArchived = true
                 },
                 onOpenInvite = onOpenInvite,
+                // 右侧开着会话时返回键先关会话（见上面的 BackHandler），列表的标签层级排在后面。
+                consumeBack = selectedChatId == null,
             )
         },
         rightContent = {

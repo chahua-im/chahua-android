@@ -124,6 +124,11 @@ fun ChatListScreen(
     onOpenThread: (ThreadDto) -> Unit,
     onOpenArchivedThread: (ThreadDto) -> Unit,
     onOpenInvite: () -> Unit,
+    /**
+     * 列表自己是否要吃掉返回键。双栏布局里右侧已经打开了会话时传 false：
+     * 那一层由会话自己处理返回（先关会话），列表的标签层级排在它后面。
+     */
+    consumeBack: Boolean = true,
 ) {
     val settings = LocalAppSettings.current
     var tabIndex by rememberSaveable { mutableIntStateOf(0) }
@@ -186,6 +191,17 @@ fun ChatListScreen(
 
     LaunchedEffect(tab) {
         if (tab != ChatTab.FRIENDS) showFriendRequests = false
+    }
+
+    // 返回键逐级退出主页，而不是直接关掉 App：
+    // 1) 好友请求页（好友标签下的子页）先退回好友列表；
+    // 2) 其它非首个标签先退回最左侧的第一个标签（双栏里右侧开着会话时让会话先处理）；
+    // 3) 再往下才交给 MainActivity（设置标签回聊天标签 / 退出 App）。
+    BackHandler(enabled = tab == ChatTab.FRIENDS && showFriendRequests) {
+        showFriendRequests = false
+    }
+    BackHandler(enabled = consumeBack && safeIndex != 0 && !showFriendRequests) {
+        tabIndex = 0
     }
 
     // 好友请求没有实时推送，只能主动拉：前台期间每分钟轮询一次待处理数，

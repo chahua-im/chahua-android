@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import coil3.disk.DiskCache
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -17,6 +18,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.paigu.chahua.core.AppGraph
+import net.paigu.chahua.data.AppLog
+import net.paigu.chahua.data.VideoCache
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
@@ -32,6 +35,8 @@ data class MediaSaveRequest(
 
 /** 下载媒体文件并保存到系统相册（图片）或影片（视频）。 */
 object MediaSaver {
+
+    private const val TAG = "MediaSaver"
 
     /**
      * 与应用同生命周期的作用域：保存过程中退出界面 / 销毁 Activity
@@ -96,7 +101,20 @@ object MediaSaver {
     }
 
     /**
-     * 下载并保存媒体，返回最终保存的文件名。
+     * 保存媒体到相册 / 影片，返回最终保存的文件名。
+     *
+     * 优先复用本地已经下载好的字节，不把同一份内容再下一次：
+     * - 图片：Coil 磁盘缓存 —— 用户既然已经在查看器里看到这张图，说明这份字节早就下载好了；
+     * - 视频：ExoPlayer 的 [VideoCache] —— 整段缓存完整时直接从缓存拷贝，有空洞才回退下载。
+     *
+     * 缓存里就是原内容：Coil 3 的磁盘缓存只存网络响应的原始编码字节
+     * （解码尺寸、裁剪、crossfade 等变换只影响内存缓存与解码结果），
+     * 视频缓存则是把响应字节逐段原样落盘，所以拷出来的文件与
+     * 「用同一个 URL 重新下载」逐字节一致，也仍是原始尺寸与原始格式。
+     *
+     * 缓存不可用时回退到网络下载（没在本地看过 / 播过、被 LRU 淘汰、用户清过缓存、
+     * 视频还有空洞等），两条路径写入相册的逻辑完全一致。
+     *
      * Android 10+ 走 MediaStore（无需权限）；Android 9 及以下写入公共目录，需要 WRITE_EXTERNAL_STORAGE 权限。
      */
     suspend fun downloadToGallery(
@@ -111,17 +129,18 @@ object MediaSaver {
             ?: if (isVideo) "video/mp4" else "image/jpeg"
         val name = buildName(url, fileName, isVideo, mime)
 
-        val response = AppGraph.apiClient.okHttpClient.newCall(
-            Request.Builder().url(url).get().build(),
-        ).execute()
+        val fromCache = if (isVideo) {
+            copyFromVideoCache(context, url, mime, name)
+        } else {
+            copyFromImageCache(context, url, mime, name)
+        }
+        if (fromCache) return@withContext name
+
+        val response = AppGraph.apiClient.okHttpClient.newCall(authRequest(url)).execute()
         response.use { r ->
             if (!r.isSuccessful) throw IOException("HTTP ${r.code}")
             val body = r.body ?: throw IOException("Empty response body")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                writeToMediaStore(context, body.byteStream(), isVideo, mime, name)
-            } else {
-                writeToLegacyStorage(context, body.byteStream(), isVideo, mime, name)
-            }
+            writeToGallery(context, body.byteStream(), isVideo, mime, name)
         }
         name
     }
@@ -134,9 +153,7 @@ object MediaSaver {
         mime: String,
     ): String = withContext(Dispatchers.IO) {
         val name = buildDownloadName(url, fileName, mime)
-        val response = AppGraph.apiClient.okHttpClient.newCall(
-            Request.Builder().url(url).get().build(),
-        ).execute()
+        val response = AppGraph.apiClient.okHttpClient.newCall(authRequest(url)).execute()
         response.use { r ->
             if (!r.isSuccessful) throw IOException("HTTP ${r.code}")
             val body = r.body ?: throw IOException("Empty response body")
@@ -147,6 +164,91 @@ object MediaSaver {
             }
         }
         name
+    }
+
+    /**
+     * 尝试把 ExoPlayer 视频缓存里已完整下载的字节直接写进影片（只用于视频）。
+     *
+     * @return true 表示已经存好；false 表示没有完整缓存（或缓存读取失败），调用方应回退到网络下载。
+     */
+    private fun copyFromVideoCache(
+        context: Context,
+        url: String,
+        mime: String,
+        name: String,
+    ): Boolean {
+        val stream = runCatching { VideoCache.openCachedStream(url) }.getOrNull() ?: return false
+        return stream.use { input ->
+            runCatching {
+                writeToGallery(context, input, true, mime, name)
+            }.onSuccess {
+                AppLog.d(TAG, "保存命中视频缓存: $url")
+            }.onFailure {
+                AppLog.w(TAG, "读取视频缓存失败，改为下载: ${it.message}")
+            }.isSuccess
+        }
+    }
+
+    /**
+     * 尝试把 Coil 磁盘缓存里的原始字节直接写进相册（只用于图片）。
+     *
+     * @return true 表示已经存好；false 表示没有缓存（或缓存读取失败），调用方应回退到网络下载。
+     */
+    private fun copyFromImageCache(
+        context: Context,
+        url: String,
+        mime: String,
+        name: String,
+    ): Boolean {
+        val snapshot = openCachedImage(url) ?: return false
+        // 拷贝期间必须保持 snapshot 打开：打开状态下该条目不会被 LRU 清理或改写。
+        return snapshot.use { snap ->
+            runCatching {
+                writeToGallery(context, snap.data.toFile().inputStream(), false, mime, name)
+            }.onSuccess {
+                AppLog.d(TAG, "保存命中图片缓存: $url")
+            }.onFailure {
+                AppLog.w(TAG, "读取图片缓存失败，改为下载: ${it.message}")
+            }.isSuccess
+        }
+    }
+
+    /**
+     * 取 Coil 网络磁盘缓存里这个 URL 的条目；没有（未展示过 / 被 LRU 淘汰 / 用户清过缓存）
+     * 或条目正在写入（尚未提交）时返回 null。
+     *
+     * Coil 3 的磁盘缓存 key 就是 URL 本身（`NetworkFetcher.diskCacheKey = diskCacheKey ?: url`），
+     * 与 [net.paigu.chahua.ui.common.AuthAsyncImage] 展示时命中的是同一份条目，
+     * 所以只要图片能显示出来，这里通常就能读到。
+     *
+     * 打开期间该条目不会被清理，调用方必须尽快 close。
+     */
+    private fun openCachedImage(url: String): DiskCache.Snapshot? =
+        runCatching { AppGraph.imageLoader.diskCache?.openSnapshot(url) }.getOrNull()
+
+    /** 统一的媒体请求：只对服务端同源地址附加鉴权头（与 Coil、视频缓存的取头判断一致）。 */
+    private fun authRequest(url: String): Request =
+        Request.Builder()
+            .url(url)
+            .get()
+            .apply {
+                AppGraph.session.authHeadersFor(url).forEach { (k, v) -> header(k, v) }
+            }
+            .build()
+
+    /** 按系统版本把输入流写入相册（图片）或影片（视频）；输入流由写入方负责关闭。 */
+    private fun writeToGallery(
+        context: Context,
+        input: InputStream,
+        isVideo: Boolean,
+        mime: String,
+        name: String,
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            writeToMediaStore(context, input, isVideo, mime, name)
+        } else {
+            writeToLegacyStorage(context, input, isVideo, mime, name)
+        }
     }
 
     private fun writeToMediaStore(

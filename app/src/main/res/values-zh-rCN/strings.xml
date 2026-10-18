@@ -75,7 +75,7 @@
     <string name="settings_plus_one">长按菜单显示「＋1」</string>
     <string name="settings_plus_one_desc">开启后，长按消息的菜单里会多出「＋1」：点一下就把这条消息的内容用自己的账号再发一遍。</string>
     <string name="settings_video_precache">视频预缓存</string>
-    <string name="settings_video_precache_desc">在聊天里停留查看视频约 1.3 秒后自动开始缓存，之后播放直接走缓存；关闭可节省流量。</string>
+    <string name="settings_video_precache_desc">在聊天里停留查看小于100M的视频自动开始缓存，关闭或许能节省点流量。</string>
     <string name="settings_video_precache_metered">移动网络下自动缓存</string>
     <string name="settings_video_precache_metered_desc">在移动网络（计费网络）下浏览聊天时也自动缓存视频；关闭后只在 Wi-Fi 下自动缓存。手动点击下载不受影响。</string>
     <string name="settings_cache_total">占用空间</string>
