@@ -124,8 +124,10 @@ import kotlin.math.sqrt
 import net.paigu.chahua.BuildConfig
 import net.paigu.chahua.R
 import net.paigu.chahua.data.AppLanguage
+import net.paigu.chahua.data.FcmTokenState
 import net.paigu.chahua.data.FontSizeOption
 import net.paigu.chahua.data.LogLevelOption
+import net.paigu.chahua.data.PushMethodOption
 import net.paigu.chahua.data.SessionManager
 import net.paigu.chahua.data.ThemeColorOption
 import net.paigu.chahua.data.ThemeModeOption
@@ -154,10 +156,15 @@ internal fun DeveloperScreen(
     onCloseDeveloper: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val pushDiagnostics by viewModel.pushDiagnostics.collectAsState()
     val context = LocalContext.current
     var showAddServer by rememberSaveable { mutableStateOf(false) }
     var showLogLevelDialog by rememberSaveable { mutableStateOf(false) }
+    var showPushMethodDialog by rememberSaveable { mutableStateOf(false) }
     var deleteServerUrl by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // 打开开发者设置时刷新一次 FCM 状态（复用已缓存的令牌，不重复触发注册）。
+    LaunchedEffect(Unit) { viewModel.loadPushDiagnostics() }
 
     LaunchedEffect(uiState.message) {
         uiState.message?.let {
@@ -320,6 +327,116 @@ internal fun DeveloperScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
             Text(
+                text = stringResource(R.string.settings_push_section),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showPushMethodDialog = true }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.settings_push_method),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            text = stringResource(
+                                PushMethodOption.from(settings.pushMethod).displayNameRes,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = viewModel::refreshPushDiagnostics,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(stringResource(R.string.settings_push_refresh))
+                    }
+                    OutlinedButton(
+                        onClick = viewModel::reRegisterPush,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(stringResource(R.string.settings_push_register))
+                    }
+                }
+            }
+
+            Text(
+                text = stringResource(R.string.settings_push_fcm_status),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                DeveloperDetailRow(
+                    label = stringResource(R.string.settings_push_fcm_configured),
+                    value = stringResource(
+                        if (pushDiagnostics.fcmConfigured) {
+                            R.string.settings_push_configured_yes
+                        } else {
+                            R.string.settings_push_configured_no
+                        },
+                    ),
+                    context = context,
+                    copyable = false,
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                DeveloperDetailRow(
+                    label = stringResource(R.string.settings_push_token_state),
+                    value = stringResource(tokenStateLabelRes(pushDiagnostics.tokenState)),
+                    context = context,
+                    copyable = false,
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                DeveloperDetailRow(
+                    label = stringResource(R.string.settings_push_token),
+                    value = pushDiagnostics.token ?: "-",
+                    context = context,
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                DeveloperDetailRow(
+                    label = stringResource(R.string.settings_push_backend_state),
+                    value = stringResource(
+                        when (pushDiagnostics.backendSubscribed) {
+                            true -> R.string.settings_push_backend_subscribed
+                            false -> R.string.settings_push_backend_missing
+                            null -> R.string.settings_push_backend_unknown
+                        },
+                    ),
+                    context = context,
+                    copyable = false,
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                DeveloperDetailRow(
+                    label = stringResource(R.string.settings_push_last_error),
+                    value = pushDiagnostics.lastError ?: "-",
+                    context = context,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
                 text = stringResource(R.string.settings_user_details),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
@@ -398,6 +515,68 @@ internal fun DeveloperScreen(
             onDismiss = { showLogLevelDialog = false },
         )
     }
+
+    if (showPushMethodDialog) {
+        PushMethodDialog(
+            currentKey = settings.pushMethod,
+            onSelect = { key ->
+                viewModel.setPushMethod(key)
+                showPushMethodDialog = false
+            },
+            onDismiss = { showPushMethodDialog = false },
+        )
+    }
+}
+
+/** FCM 令牌状态对应的显示文案。 */
+private fun tokenStateLabelRes(state: FcmTokenState): Int = when (state) {
+    FcmTokenState.READY -> R.string.settings_push_token_ready
+    FcmTokenState.LOADING -> R.string.settings_push_token_loading
+    FcmTokenState.FAILED -> R.string.settings_push_token_failed
+    FcmTokenState.UNKNOWN -> R.string.settings_push_token_unknown
+}
+
+@Composable
+private fun PushMethodDialog(
+    currentKey: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_push_method)) },
+        text = {
+            Column {
+                PushMethodOption.entries.forEach { option ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(option.key) }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = option.key == currentKey,
+                            onClick = { onSelect(option.key) },
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(option.displayNameRes))
+                    }
+                }
+                Text(
+                    text = stringResource(R.string.settings_push_method_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.settings_cancel))
+            }
+        },
+    )
 }
 
 @Composable
@@ -516,6 +695,7 @@ private fun DeveloperDetailRow(
     label: String,
     value: String,
     context: Context,
+    copyable: Boolean = true,
 ) {
     Row(
         modifier = Modifier
@@ -535,7 +715,7 @@ private fun DeveloperDetailRow(
                 maxLines = 3,
             )
         }
-        if (value != "-") {
+        if (copyable && value != "-") {
             IconButton(onClick = { copyToClipboard(context, label, value) }) {
                 Icon(
                     Icons.Filled.ContentCopy,

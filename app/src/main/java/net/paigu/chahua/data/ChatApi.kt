@@ -37,6 +37,7 @@ import net.paigu.chahua.data.models.MuteResponse
 import net.paigu.chahua.data.models.PinDto
 import net.paigu.chahua.data.models.PendingFriendRequestCountResponse
 import net.paigu.chahua.data.models.PushSubscribeBody
+import net.paigu.chahua.data.models.PushSubscriptionStatusResponse
 import net.paigu.chahua.data.models.PushUnsubscribeBody
 import net.paigu.chahua.data.models.RedeemInviteBody
 import net.paigu.chahua.data.models.RedeemInviteResponse
@@ -526,6 +527,16 @@ class ChatApi(
             PushUnsubscribeBody(provider = "fcm", deviceToken = deviceToken),
         )
     }
+
+    /** 查询后端是否已记录该设备令牌的 FCM 订阅。 */
+    suspend fun fcmPushSubscriptionStatus(deviceToken: String): PushSubscriptionStatusResponse =
+        client.get(
+            "push/subscription-status",
+            buildMap {
+                put("provider", "fcm")
+                put("deviceToken", deviceToken)
+            },
+        )
 }
 
 @kotlinx.serialization.Serializable

@@ -1,6 +1,7 @@
 package net.paigu.chahua.service
 
 import android.content.Context
+import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import kotlinx.coroutines.launch
@@ -8,6 +9,7 @@ import kotlinx.serialization.Serializable
 import net.paigu.chahua.R
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.data.ApiJson
+import net.paigu.chahua.data.PushMethodOption
 
 /**
  * FCM 后台推送接收端（进程被系统回收、前台 WebSocket 不在线时的兜底通道）。
@@ -17,6 +19,10 @@ import net.paigu.chahua.data.ApiJson
  * - 通知文案在客户端本地化（后端只提供结构化预览）。
  */
 class FcmMessagingService : FirebaseMessagingService() {
+
+    private companion object {
+        private const val TAG = "FcmMessagingService"
+    }
 
     /**
      * Firebase 26 新增的注册回调；旧版 SDK 只会回调 [onNewToken]，两个都实现以覆盖不同版本。
@@ -37,11 +43,20 @@ class FcmMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
-        val payload = FcmPayload.parse(message.data) ?: return
+        // 系统会在后台线程直接回调这里，任何异常都会杀掉进程，因此整体兜底。
+        runCatching { showNotification(message.data) }
+            .onFailure { Log.w(TAG, "Failed to show FCM notification: ${it.message}") }
+    }
+
+    private fun showNotification(data: Map<String, String>) {
+        val payload = FcmPayload.parse(data) ?: return
+        val settings = AppGraph.settings.snapshot()
         // 已登出，或 App 在前台时由 WebSocket 直接展示，无须重复通知。
         if (!AppGraph.session.snapshot().hasSession) return
         if (AppGraph.engine.appActive) return
-        if (!AppGraph.settings.snapshot().notificationsEnabled) return
+        if (!settings.notificationsEnabled) return
+        // 开发者选择了「仅 WebSocket」时不再展示 FCM 通知。
+        if (settings.pushMethodOption == PushMethodOption.WEBSOCKET) return
 
         ChatNotifications.ensureChannels(this)
         val sender = payload.senderName.takeIf { it.isNotBlank() }

@@ -65,6 +65,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val sessionState = AppGraph.session.sessionState
     val settingsState = AppGraph.settings.settingsState
 
+    /** 开发者设置里展示的 FCM 状态。 */
+    val pushDiagnostics = AppGraph.pushRegistration.diagnostics
+
     /** 添加一个 API 服务器到列表（不切换当前服务器）。 */
     fun addServerUrl(url: String) {
         viewModelScope.launch {
@@ -246,6 +249,40 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setLogLevel(key: String) {
         viewModelScope.launch { AppGraph.settings.setLogLevel(key) }
+    }
+
+    /** 切换推送方式：立即对齐服务端订阅（仅 WebSocket 会退订 FCM）。 */
+    fun setPushMethod(key: String) {
+        viewModelScope.launch {
+            AppGraph.settings.setPushMethod(key)
+            runCatching { AppGraph.pushRegistration.applyMethod() }
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(message = getString(R.string.settings_saved))
+                }
+                .onFailure {
+                    _uiState.value = _uiState.value.copy(
+                        message = getString(R.string.settings_save_failed, it.message),
+                    )
+                }
+        }
+    }
+
+    /** 打开开发者设置时刷新展示状态（复用已缓存令牌，不重复请求 FCM）。 */
+    fun loadPushDiagnostics() {
+        viewModelScope.launch { AppGraph.pushRegistration.refresh(forceTokenFetch = false) }
+    }
+
+    /** 重新拉取 FCM 令牌并刷新展示状态（会触发一次 FCM 注册）。 */
+    fun refreshPushDiagnostics() {
+        viewModelScope.launch { AppGraph.pushRegistration.refresh(forceTokenFetch = true) }
+    }
+
+    /** 用当前令牌重新上报订阅，用于后台订阅被清理后的恢复。 */
+    fun reRegisterPush() {
+        viewModelScope.launch {
+            AppGraph.pushRegistration.registerIfPossible(force = true)
+            AppGraph.pushRegistration.refresh()
+        }
     }
 
     /** 拉取当前用户的好友验证设置。 */
