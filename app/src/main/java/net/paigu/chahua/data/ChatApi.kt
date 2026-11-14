@@ -36,6 +36,8 @@ import net.paigu.chahua.data.models.MuteBody
 import net.paigu.chahua.data.models.MuteResponse
 import net.paigu.chahua.data.models.PinDto
 import net.paigu.chahua.data.models.PendingFriendRequestCountResponse
+import net.paigu.chahua.data.models.PushSubscribeBody
+import net.paigu.chahua.data.models.PushUnsubscribeBody
 import net.paigu.chahua.data.models.RedeemInviteBody
 import net.paigu.chahua.data.models.RedeemInviteResponse
 import net.paigu.chahua.data.models.ReactionDetailResponse
@@ -504,6 +506,26 @@ class ChatApi(
             clientGeneratedId = clientGeneratedId,
         ),
     )
+
+    // ---- 推送（FCM） ----
+
+    /** 把当前设备的 FCM 令牌登记为后端推送订阅。 */
+    suspend fun subscribeFcmPush(deviceToken: String) {
+        client.noContentWithBody(
+            "POST",
+            "push/subscribe",
+            PushSubscribeBody(provider = "fcm", deviceToken = deviceToken),
+        )
+    }
+
+    /** 取消当前设备的 FCM 推送订阅。 */
+    suspend fun unsubscribeFcmPush(deviceToken: String) {
+        client.noContentWithBody(
+            "POST",
+            "push/unsubscribe",
+            PushUnsubscribeBody(provider = "fcm", deviceToken = deviceToken),
+        )
+    }
 }
 
 @kotlinx.serialization.Serializable

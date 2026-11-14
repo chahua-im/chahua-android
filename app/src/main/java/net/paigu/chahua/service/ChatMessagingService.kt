@@ -1,16 +1,10 @@
 package net.paigu.chahua.service
 
 import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
-import android.content.pm.ServiceInfo
-import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.IBinder
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -18,38 +12,30 @@ import kotlinx.coroutines.launch
 import net.paigu.chahua.R
 import net.paigu.chahua.core.AppGraph
 import net.paigu.chahua.data.models.MessageDto
-import net.paigu.chahua.ui.chat.ChatActivity
-import net.paigu.chahua.ui.main.MainActivity
 
 /**
  * 后台消息收发服务（前台 Service）：
  * 持有 WebSocket 连接，应用退到后台后仍保持实时接收；有新消息时展示通知。
  * “常驻通知”开关只控制通知栏常驻通知的显示/隐藏，不影响服务运行与消息推送。
+ *
+ * 通知样式与 id 规则见 [ChatNotifications]，与 FCM 后台推送共用。
  */
 class ChatMessagingService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     companion object {
-        private const val CHANNEL_FOREGROUND = "chat_messaging"
-        private const val CHANNEL_CHATS = "chat_messages"
-        private const val CHANNEL_THREADS = "thread_messages"
-        private const val FOREGROUND_NOTIFICATION_ID = 1001
-        private const val CHAT_NOTIFICATION_BASE = 2000
-        private const val THREAD_NOTIFICATION_BASE = 5000
+        /** 会话通知 id；与 [ChatNotifications.notifyMessage] 保持一致，便于标记已读后取消。 */
+        fun chatNotificationId(chatId: String): Int = ChatNotifications.chatNotificationId(chatId)
 
-        /** 会话通知 id；与 [notifyNewMessage] 保持一致，便于标记已读后取消。 */
-        fun chatNotificationId(chatId: String): Int =
-            CHAT_NOTIFICATION_BASE + chatId.hashCode().mod(1000)
-
-        /** 话题通知 id；与 [notifyNewMessage] 保持一致。 */
+        /** 话题通知 id；与 [ChatNotifications.notifyMessage] 保持一致。 */
         fun threadNotificationId(chatId: String, threadRootId: String): Int =
-            THREAD_NOTIFICATION_BASE + "$chatId:$threadRootId".hashCode().mod(1000)
+            ChatNotifications.threadNotificationId(chatId, threadRootId)
     }
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannels()
+        ChatNotifications.ensureChannels(this)
         AppGraph.engine.start()
         // 先满足前台服务启动要求，再按开关决定是否移除常驻通知。
         applyPersistentNotificationPreference()
@@ -76,38 +62,6 @@ class ChatMessagingService : Service() {
         super.onDestroy()
     }
 
-    private fun createNotificationChannels() {
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_FOREGROUND,
-                getString(R.string.notification_channel_name),
-                NotificationManager.IMPORTANCE_LOW,
-            ).apply {
-                description = getString(R.string.notification_channel_desc)
-                setShowBadge(false)
-            },
-        )
-        manager.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_CHATS,
-                getString(R.string.notification_channel_chats_name),
-                NotificationManager.IMPORTANCE_DEFAULT,
-            ).apply {
-                description = getString(R.string.notification_channel_chats_desc)
-            },
-        )
-        manager.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_THREADS,
-                getString(R.string.notification_channel_threads_name),
-                NotificationManager.IMPORTANCE_DEFAULT,
-            ).apply {
-                description = getString(R.string.notification_channel_threads_desc)
-            },
-        )
-    }
-
     /** 先启动前台（满足系统要求），再按“常驻通知”开关决定是否隐藏常驻通知。 */
     private fun applyPersistentNotificationPreference() {
         startForegroundCompat(getString(R.string.service_running))
@@ -123,28 +77,15 @@ class ChatMessagingService : Service() {
 
     /** 按群聊/话题分别推送：同一群聊或话题只保留一条通知，内容为 "user：message"。 */
     private fun notifyNewMessage(msg: MessageDto) {
-        val threadMode = !msg.replyRootId.isNullOrBlank()
-        val title = resolveTitle(msg)
         val sender = msg.sender.name?.takeIf { it.isNotBlank() }
             ?: getString(R.string.message_sender_unknown)
-        val content = getString(R.string.message_sender_format, sender, previewText(msg))
-        val notificationId = if (threadMode) {
-            threadNotificationId(msg.chatId, msg.replyRootId.orEmpty())
-        } else {
-            chatNotificationId(msg.chatId)
-        }
-        val notification = NotificationCompat.Builder(
-            this,
-            if (threadMode) CHANNEL_THREADS else CHANNEL_CHATS,
+        ChatNotifications.notifyMessage(
+            context = this,
+            chatId = msg.chatId,
+            threadRootId = msg.replyRootId,
+            title = resolveTitle(msg),
+            content = getString(R.string.message_sender_format, sender, previewText(msg)),
         )
-            .setSmallIcon(R.drawable.ic_notification_mono)
-            .setContentTitle(title)
-            .setContentText(content)
-            .setContentIntent(contentIntent(msg, title, notificationId))
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .build()
-        NotificationManagerCompat.from(this).notify(notificationId, notification)
     }
 
     private fun resolveTitle(msg: MessageDto): String {
@@ -170,44 +111,17 @@ class ChatMessagingService : Service() {
         }
     }
 
-    private fun contentIntent(msg: MessageDto, title: String, requestCode: Int): PendingIntent {
-        val intent = if (msg.replyRootId.isNullOrBlank()) {
-            ChatActivity.createIntent(this, msg.chatId, title)
-        } else {
-            ChatActivity.createThreadIntent(this, msg.chatId, title, msg.replyRootId, 0L)
-        }
-        return PendingIntent.getActivity(
-            this,
-            requestCode,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-    }
-
     private fun startForegroundCompat(text: String) {
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val notification: Notification = NotificationCompat.Builder(this, CHANNEL_FOREGROUND)
-            .setSmallIcon(R.drawable.ic_notification_mono)
-            .setContentTitle(getString(R.string.app_name))
-            .setContentText(text)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
+        val notification: Notification = ChatNotifications.foregroundNotification(this, text)
         if (android.os.Build.VERSION.SDK_INT >= 29) {
             startForeground(
-                FOREGROUND_NOTIFICATION_ID,
+                ChatNotifications.FOREGROUND_NOTIFICATION_ID,
                 notification,
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
             )
         } else {
             @Suppress("DEPRECATION")
-            startForeground(FOREGROUND_NOTIFICATION_ID, notification)
+            startForeground(ChatNotifications.FOREGROUND_NOTIFICATION_ID, notification)
         }
     }
 }

@@ -21,6 +21,7 @@ import net.paigu.chahua.data.ChatApi
 import net.paigu.chahua.data.ChatEngine
 import net.paigu.chahua.data.ChatStore
 import net.paigu.chahua.data.ErrorLoggingInterceptor
+import net.paigu.chahua.data.PushRegistration
 import net.paigu.chahua.data.SessionManager
 import net.paigu.chahua.data.SettingsManager
 import net.paigu.chahua.data.StickerPrecache
@@ -61,6 +62,9 @@ object AppGraph {
     lateinit var syncManager: SyncManager
         private set
 
+    lateinit var pushRegistration: PushRegistration
+        private set
+
     lateinit var imageLoader: ImageLoader
         private set
 
@@ -79,6 +83,7 @@ object AppGraph {
         engine = ChatEngine(apiClient, api, store) { settings.snapshot().showLatency }
         store.currentUid = { session.snapshot().me?.uid ?: -1 }
         syncManager = SyncManager(api, store)
+        pushRegistration = PushRegistration(application, api, session)
         engine.onConnected = { scope.launch { syncManager.syncAll() } }
         imageLoader = buildImageLoader(application, session)
         stickerPrecache = StickerPrecache(application, api, session, imageLoader)
@@ -99,6 +104,13 @@ object AppGraph {
     /** 进入 App 后触发表情包预缓存（后台执行，失败静默，下次进入自动重试）。 */
     fun startStickerPrecache() {
         stickerPrecache.start()
+    }
+
+    /** 登录态下补齐 FCM 推送订阅（后台执行，失败静默；令牌刷新由 FCM 回调上报）。 */
+    fun registerPushNotifications() {
+        scope.launch {
+            runCatching { pushRegistration.registerIfPossible() }
+        }
     }
 
     fun stopMessaging(context: Context) {

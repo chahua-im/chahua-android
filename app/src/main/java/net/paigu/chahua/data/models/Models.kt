@@ -778,3 +778,17 @@ data class UpdateStickerPackOrderItemBody(
 data class UpdateStickerPackOrderRequest(
     val order: List<UpdateStickerPackOrderItemBody> = emptyList(),
 )
+
+/** 推送订阅请求体；Android 端固定使用 FCM。 */
+@Serializable
+data class PushSubscribeBody(
+    val provider: String,
+    val deviceToken: String,
+)
+
+/** 取消推送订阅请求体；Android 端固定使用 FCM。 */
+@Serializable
+data class PushUnsubscribeBody(
+    val provider: String,
+    val deviceToken: String,
+)
