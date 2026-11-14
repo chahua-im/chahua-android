@@ -792,3 +792,11 @@ data class PushUnsubscribeBody(
     val provider: String,
     val deviceToken: String,
 )
+
+/** 后端推送订阅状态（开发者设置里的 FCM 状态详情使用）。 */
+@Serializable
+data class PushSubscriptionStatusResponse(
+    val hasActiveSubscription: Boolean = false,
+    val hasMatchingSubscription: Boolean? = null,
+    val hasMatchingEndpoint: Boolean? = null,
+)

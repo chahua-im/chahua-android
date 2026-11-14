@@ -83,7 +83,7 @@ object AppGraph {
         engine = ChatEngine(apiClient, api, store) { settings.snapshot().showLatency }
         store.currentUid = { session.snapshot().me?.uid ?: -1 }
         syncManager = SyncManager(api, store)
-        pushRegistration = PushRegistration(application, api, session)
+        pushRegistration = PushRegistration(application, api, session, settings)
         engine.onConnected = { scope.launch { syncManager.syncAll() } }
         imageLoader = buildImageLoader(application, session)
         stickerPrecache = StickerPrecache(application, api, session, imageLoader)

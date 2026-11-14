@@ -72,6 +72,30 @@ enum class FontSizeOption(val key: String, val scale: Float, val displayNameRes:
     }
 }
 
+/**
+ * 开发者设置里可选的推送方式。
+ *
+ * - [AUTO]：前台服务（WebSocket）弹通知，进程被回收时由 FCM 兜底（默认）。
+ * - [WEBSOCKET]：只用前台服务，取消 FCM 订阅。
+ * - [FCM]：只认 FCM 通知，本地不弹；用来验证 FCM 是否真的送达。
+ */
+enum class PushMethodOption(val key: String, val displayNameRes: Int) {
+    AUTO("auto", net.paigu.chahua.R.string.settings_push_method_auto),
+    WEBSOCKET("websocket", net.paigu.chahua.R.string.settings_push_method_websocket),
+    FCM("fcm", net.paigu.chahua.R.string.settings_push_method_fcm),
+    ;
+
+    /** 该方式是否需要维持 FCM 订阅（[WEBSOCKET] 会退订）。 */
+    val usesFcm: Boolean get() = this != WEBSOCKET
+
+    /** 是否由前台服务在本地弹通知。 */
+    val showsLocalNotifications: Boolean get() = this != FCM
+
+    companion object {
+        fun from(key: String): PushMethodOption = entries.firstOrNull { it.key == key } ?: AUTO
+    }
+}
+
 data class AppSettings(
     val showAllTab: Boolean = true,
     val hideThreadsInAllTab: Boolean = true,
@@ -102,11 +126,16 @@ data class AppSettings(
     val pinnedReactions: List<String> = DEFAULT_PINNED_REACTIONS,
     val recentReactions: List<String> = DEFAULT_RECENT_REACTIONS,
     val logLevel: String = LogLevelOption.INFO.key,
+    /** 开发者设置里的推送方式，默认自动（前台服务 + FCM 兜底）。 */
+    val pushMethod: String = PushMethodOption.AUTO.key,
 ) {
     /** 快捷表情条：设置里钉住的优先，其余取最近用过的，最多 [MAX_PINNED_REACTIONS] 个。 */
     fun quickReactionEmojis(): List<String> =
         (pinnedReactions + recentReactions.filterNot { it in pinnedReactions })
             .take(MAX_PINNED_REACTIONS)
+
+    /** 解析后的推送方式。 */
+    val pushMethodOption: PushMethodOption get() = PushMethodOption.from(pushMethod)
 }
 
 /**
@@ -141,6 +170,7 @@ class SettingsManager(context: Context) {
         val PINNED_REACTIONS = stringPreferencesKey("pinned_reactions")
         val RECENT_REACTIONS = stringPreferencesKey("recent_reactions")
         val LOG_LEVEL = stringPreferencesKey("log_level")
+        val PUSH_METHOD = stringPreferencesKey("push_method")
     }
 
     private companion object {
@@ -183,6 +213,7 @@ class SettingsManager(context: Context) {
                 decodeList(p[Keys.RECENT_REACTIONS]) ?: DEFAULT_RECENT_REACTIONS,
             ),
             logLevel = p[Keys.LOG_LEVEL] ?: LogLevelOption.INFO.key,
+            pushMethod = p[Keys.PUSH_METHOD] ?: PushMethodOption.AUTO.key,
         )
     }
 
@@ -352,6 +383,12 @@ class SettingsManager(context: Context) {
         prefs.edit { it[Keys.LOG_LEVEL] = normalized }
         snapshot = snapshot.copy(logLevel = normalized)
         AppLog.minLevel = LogLevelOption.from(normalized)
+    }
+
+    suspend fun setPushMethod(key: String) {
+        val normalized = PushMethodOption.from(key).key
+        prefs.edit { it[Keys.PUSH_METHOD] = normalized }
+        snapshot = snapshot.copy(pushMethod = normalized)
     }
 
     private fun normalizePinnedReactions(reactions: List<String>?): List<String> =

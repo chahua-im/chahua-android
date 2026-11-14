@@ -41,7 +41,11 @@ class ChatMessagingService : Service() {
         applyPersistentNotificationPreference()
         scope.launch {
             AppGraph.store.incoming.collect { msg ->
-                if (!AppGraph.engine.appActive && AppGraph.settings.snapshot().notificationsEnabled) {
+                val settings = AppGraph.settings.snapshot()
+                if (!AppGraph.engine.appActive &&
+                    settings.notificationsEnabled &&
+                    settings.pushMethodOption.showsLocalNotifications
+                ) {
                     notifyNewMessage(msg)
                 }
             }
