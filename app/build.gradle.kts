@@ -2,6 +2,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    //添加GMS模块用于FCM
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -78,6 +80,10 @@ dependencies {
     implementation(libs.androidx.emoji2.emojipicker)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.window)
+    //添加Firebase
+    implementation(platform("com.google.firebase:firebase-bom:35.2.0"))
+    implementation("com.google.firebase:firebase-messaging")
+    //引用了 Firebase BoM 之后，BOM 会自动将各个 Firebase 库映射为相互兼容的版本，不用手动逐个填写版本号
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

@@ -141,6 +141,8 @@ class MainActivity : FragmentActivity() {
         AppGraph.startMessaging(this)
         // 进入 App 后立即在后台预热当前账号的表情包，表情面板打开即可秒显。
         AppGraph.startStickerPrecache()
+        // 登录态下补齐 FCM 推送订阅，进程被回收后仍能收到新消息通知。
+        AppGraph.registerPushNotifications()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

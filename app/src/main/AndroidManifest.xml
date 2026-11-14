@@ -114,6 +114,22 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- FCM：进程被系统回收时的后台推送兜底通道。 -->
+        <service
+            android:name=".service.FcmMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="chat_messages" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification_mono" />
+
     </application>
 
 </manifest>

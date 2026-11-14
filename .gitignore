@@ -51,6 +51,7 @@ local.properties
 # Keystore files (不要提交签名文件)
 *.jks
 *.keystore
+google-services.json
 
 # External native build folder (CMake)
 .externalNativeBuild

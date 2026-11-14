@@ -377,6 +377,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun logout() {
         viewModelScope.launch {
             AppGraph.stopMessaging(getApplication())
+            // 先退订推送再清会话（退订请求需要当前登录态），失败不影响退出。
+            runCatching { AppGraph.pushRegistration.unregister() }
             AppGraph.session.clear()
             AppGraph.store.clear()
             _uiState.value = _uiState.value.copy(loggedOut = true)
